@@ -6,13 +6,13 @@ from urllib.parse import urlencode
 def main():
     #Only using first genre so that we don't accidentally get very specific recommendations
     token = get_auth_token()
-    first_song_artist_obj = search_song(token, "we will rock you")
+    first_song_artist_obj = search_song(token, "rasputin")
     first_artist_id = first_song_artist_obj["artist_id"]
     first_song_id = first_song_artist_obj["song_id"]
     first_genres = get_artist_genres(token, first_artist_id)
     first_features = get_song_feature(token, first_song_id)
 
-    sec_song_artist_obj = search_song(token, "the swan")
+    sec_song_artist_obj = search_song(token, "river flows in you")
     sec_artist_id = sec_song_artist_obj["artist_id"]
     sec_song_id = sec_song_artist_obj["song_id"]
     sec_genres = get_artist_genres(token, sec_artist_id)
