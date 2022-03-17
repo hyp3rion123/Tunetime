@@ -2,7 +2,19 @@
 <html>
 <body>
 
-<h1>Login page</h1>
+<form action="/buildPlaylist">
+    <label for="fsong" id="fsong">First song:</label><br>
+    <input name="fsong" type="text" placeholder="Mamma Mia" required=true><br>
+    <label for="lsong" id="lsong">Last song:</label><br>
+    <input name="lsong" type="text" placeholder="Bohemian Rhapsody" required=true><br>
+    <label for="steps" id="steps">Steps:</label><br>
+    <input name="steps" type="text" placeholder="2" required=true><br>
+    {% for event in events %}
+        <input type="radio" name="event" value="{{ event.get('summary') }}">{{ event.get('summary') }}<br>
+    {% endfor %}
+    <input name="data" type="hidden" value="{{ data }}">
+    <input type="submit" value="submit">
+</form>
 
 </body>
 </html>
