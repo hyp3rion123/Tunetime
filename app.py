@@ -52,7 +52,7 @@ def index():
 
         if not events:
             print('No upcoming events found.')
-            return "no events"
+            return render_template("index.html", events=[], data=request.args.get("data"))
 
         # Prints the start and name of the next 10 events
         for event in events:
