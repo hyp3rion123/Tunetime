@@ -1,10 +1,11 @@
 from crypt import methods
+from curses.ascii import CR
 from re import search
 import requests, base64
 from ast import literal_eval
 from math import floor
 import datetime
-import os.path
+import os
 from urllib.parse import urlencode
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from flask import Flask, render_template, request, redirect, url_for, json
@@ -18,26 +19,39 @@ from werkzeug.exceptions import BadRequest
 SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
 api = Flask(__name__)
 
-
 @api.route("/index", methods=["GET"])
 def index():
-    creds = None
-    # The file token.json stores the user's access and refresh tokens, and is
-    # created automatically when the authorization flow completes for the first
-    # time.
-    if os.path.exists('token.json'):
-        creds = Credentials.from_authorized_user_file('token.json', SCOPES)
-    # If there are no (valid) credentials available, let the user log in.
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            flow = InstalledAppFlow.from_client_secrets_file(
-                'credentials.json', SCOPES)
-            creds = flow.run_local_server(port=5001)
-        # Save the credentials for the next run
-        with open('token.json', 'w') as token:
-            token.write(creds.to_json())
+    # creds = Credentials(
+    #     token=os.environ["GOOGLE_AUTH_TOKEN"],
+    #     refresh_token=os.environ["GOOGLE_REFRESH_TOKEN"],
+    #     #id_token - if needed refresh creds like before, do to_json and obtain the id_token
+    #     token_uri=os.environ["GOOGLE_TOKEN_URI"],
+    #     client_id=os.environ["GOOGLE_CLIENT_ID"],
+    #     client_secret=os.environ["GOOGLE_CLIENT_SECRET"],
+    #     scopes=[os.environ["GOOGLE_TOKEN_SCOPES"]],
+    #     expiry=datetime.datetime.strptime(os.environ["GOOGLE_TOKEN_EXPIRY"], '%Y-%m-%dT%H:%M:%S.%fZ')
+    # )
+    # # If there are no (valid) credentials available, let the user log in.
+    #if not creds or not creds.valid:
+    creds=None
+    if creds==None:#if creds and creds.expired and creds.refresh_token:
+        print("REFRESHING TOKEN")
+        creds.refresh(Request())
+        new_creds = creds.to_json()
+        print("REFRESHED TOKEN: " + new_creds)
+        os.environ["GOOGLE_AUTH_TOKEN"] = new_creds["token"]
+        os.environ["GOOGLE_REFRESH_TOKEN"] = new_creds["refresh_token"]
+        os.environ["GOOGLE_TOKEN_EXPIRY"] = new_creds["expiry"]
+    #     else:
+    #         flow = InstalledAppFlow.from_client_secrets_file(
+    #             'credentials.json', SCOPES)
+    #         creds = flow.run_local_server(port=5001)
+    #     # Save the credentials for the next run
+    #     with open('./token.json', 'w') as token:
+    #         #token.write(creds.to_json())
+    #         token.write("TEST123")
+    #     with open('./token.json', 'r') as f:
+    #         print(f.read())
     try:
         service = build('calendar', 'v3', credentials=creds)
         # calendars = service.calendarList().list().execute()
@@ -81,22 +95,22 @@ def get_song_feature(auth_token, song_id):
 
 @api.route("/buildPlaylist", methods=["GET"])
 def build_playlist():
-    # # SEARCH FOR FIRST TWO SONGS - add some sort of error handling in case song doesn't exist
-    # token = request.args.get("token")
-    # # Using steps
-    # if request.args.get("first_song") != "":
-    #     user_songs = [request.args.get("first_song"), request.args.get("last_song")]
-    #     songs = build_playlist_from_steps(token, user_songs, int(request.args.get("steps_input")), False)
-    #     return {"songs": songs, "steps": request.args.get("steps_input")}
-    # #Using events
-    # else:    
-    #     events = literal_eval(request.args.get("events"))
-    #     event_songs = []
-    #     for i in range(len(events)):
-    #         event_songs.append(request.args.get("event_" + str(i+1) + "_" + events[i]["summary"] + "_song"))
-    #     event_songs.append(request.args.get("last_song"))
-    #     songs = build_playlist_from_events(token, events, event_songs)
-    #     songs = json.dumps(songs, default=str)
+    # SEARCH FOR FIRST TWO SONGS - add some sort of error handling in case song doesn't exist
+    token = request.args.get("token")
+    # Using steps
+    if request.args.get("first_song") != "":
+        user_songs = [request.args.get("first_song"), request.args.get("last_song")]
+        songs = build_playlist_from_steps(token, user_songs, int(request.args.get("steps_input")), False)
+        return {"songs": songs, "steps": request.args.get("steps_input")}
+    #Using events
+    else:    
+        events = literal_eval(request.args.get("events"))
+        event_songs = []
+        for i in range(len(events)):
+            event_songs.append(request.args.get("event_" + str(i+1) + "_" + events[i]["summary"] + "_song"))
+        event_songs.append(request.args.get("last_song"))
+        songs = build_playlist_from_events(token, events, event_songs)
+        songs = json.dumps(songs, default=str)
 
     return render_template("info.html")
 
@@ -324,12 +338,13 @@ def search_song(auth_token, song_name):
 def authorize():
     client_id = "4ed89afd07c943c896d7a53da23cdaff"
     secret = "fsdkfansmd,fnas,df"
+    red_uri = os.environ["ROOT_URL"] + "/callback"
 
     query_params = urlencode(
         {
             "client_id": client_id,
             "response_type": "code",
-            "redirect_uri": "http://localhost:5000/callback",
+            "redirect_uri": red_uri,
             "state": secret,
             "scope": "user-read-private playlist-read-private playlist-modify-private",
         }
@@ -352,7 +367,7 @@ def callback():
         "body": {
             "grant_type": "authorization_code",
             "code": request.args.get("code"),
-            "redirect_uri": "http://localhost:5000/callback",
+            "redirect_uri": os.environ["ROOT_URL"] + "/callback",
         },
         "headers": {
             "Authorization": "Basic " + auth_token,
@@ -574,7 +589,7 @@ if __name__ == "__main__":
     # query_params = urlencode({
     #     "client_id": client_id,
     #     "response_type": "code",
-    #     "redirect_uri": "http://localhost:5000/callback",
+    #     "redirect_uri": os.environ["ROOT_URL"] + "/callback",
     #     "state": secret,
     #     "scope" : "user-read-private playlist-read-private playlist-modify-private"
     # })
