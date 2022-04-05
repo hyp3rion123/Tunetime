@@ -6,18 +6,21 @@
     </script>
     <link href="{{ url_for('static',filename='styles/main.css') }}" rel="stylesheet" type="text/css">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Poppins">
+    <title>TuneTime</title>
 </head>
 <body>
-<div class="page_wrapper font-poppins">
-    <div class="card_outer">
-        <div class="card_picture"></div>
-        <div class="card_body">
-            <h2 class="form_title">Playlist Created</h2>
-            <h3 class="info">Playlist URL: </h3>
-            <h3 class="info">Created by: </h3>
-            <h3 class="info">Developer: </h3>
-            <h3 class="info">Source Code: </h3>
-            <h3 class="info">Connect with me!</h3>
-        </div>
-    </div>  
-</div>
+    <div class="page_wrapper font-poppins">
+        <div class="card_outer">
+            <div class="card_picture"></div>
+            <div class="card_body">
+                <h2 class="form_title">Playlist Created</h2>
+                <a class="info" href="{{ data.playlist_url }}">Playlist URL</a>                
+                <h3 class="info">Created by: {{ data.display_name }}</h3>
+                <h3 class="info">Developer: Andrei Gliga</h3>
+                <a class="info"href="https://github.com/hyp3rion123/Tunetime">Source Code</a><br>
+                <a class="info" href="{{ data.base_url }}/">← Create another playlist</a>
+                <h3 class="info">Connect with me!</h3>
+            </div>
+        </div>  
+    </div>
+</body>

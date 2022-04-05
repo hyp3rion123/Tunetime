@@ -65,7 +65,7 @@ label {
     margin-bottom: 25px;
 }
 
-#submit_button {
+#submit_button{
     margin-top: 10px;
     line-height:40px;
     color: white;
@@ -173,4 +173,17 @@ span:before
 
 .info {
     color: white;
+    font-size: 18px;
+}
+
+#login_button{
+  background-color: rgb(42, 190, 42);
+  height: 40px;
+  width: 100px;
+  border-radius: 50px;
+  font-size: 18px;
+  font-family: "Poppins";
+  cursor: pointer; 
+  color: white;
+  border: none;
 }

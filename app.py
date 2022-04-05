@@ -1,61 +1,80 @@
-from crypt import methods
-from curses.ascii import CR
-from re import search
+#Things to add in future:
+#1. Create a dropdown menu on the song search for reccomendations based on what is being typed
+#2. Double check playlist length when generated from events and make sure it lines up
+#   We prefer to make the playlist longer than needed and remove songs with the lowest step accuracy until times match up
+#3. Only take events from the next day that has at least one event(i.e don't take events from multiple days)
+#4. Prevent users from directly accessing non-home endpoints
+
+#from crypt import methods
+#from curses.ascii import CR
+#from re import search
+#from xml.parsers import expat
 import requests, base64
 from ast import literal_eval
 from math import floor
 import datetime
 import os
 from urllib.parse import urlencode
-from http.server import BaseHTTPRequestHandler, HTTPServer
-from flask import Flask, render_template, request, redirect, url_for, json
-from google.auth.transport.requests import Request
+#from http.server import BaseHTTPRequestHandler, HTTPServer
+from flask import Flask, render_template, request, redirect, url_for, json, make_response
+#from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
+from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from werkzeug.exceptions import BadRequest
 
-SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
 api = Flask(__name__)
 
+@api.route("/login", methods=["GET"])
+def login():
+    SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
+    #User will land on /loginCallback once permissions are granted
+    flow = Flow.from_client_secrets_file('./credentials.json', SCOPES, redirect_uri=os.environ["ROOT_URL"] + "/loginCallback")
+    #Authorization URL is linked to Login button
+    auth_url, _ = flow.authorization_url(prompt='consent')
+    return render_template("login.html", auth_url=auth_url)
+
+#Prevents direct access to the endpoints without authentication
+def login_required(f):
+    def decorated_function(*args, **kwargs):
+        if request.cookies.get('google_token') is None or request.args.get("data") is None or request.args.get("data").length < 10:
+            return redirect('/')
+        return f(*args, **kwargs)
+        decorated_function.__name__ = f.__name__
+        decorated_function.__doc__ = f.__doc__
+    return decorated_function
+
+@api.route("/loginCallback", methods=["GET"])
+@login_required
+def login_callback():
+    SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
+    #Extract code and exchange for token
+    code = request.args.get("code")
+    print("CODE: ", code)
+    flow = Flow.from_client_secrets_file('./credentials.json', SCOPES, redirect_uri=os.environ["ROOT_URL"] + "/loginCallback")
+    flow.fetch_token(code=code)
+    #Set the token/exp cookies
+    token = flow.credentials.token
+    exp = flow.credentials.expiry
+    resp = make_response(redirect(url_for("authorize")))
+    resp.set_cookie("google_token", token, expires=exp)
+    return resp
+
 @api.route("/index", methods=["GET"])
+@login_required
 def index():
-    # creds = Credentials(
-    #     token=os.environ["GOOGLE_AUTH_TOKEN"],
-    #     refresh_token=os.environ["GOOGLE_REFRESH_TOKEN"],
-    #     #id_token - if needed refresh creds like before, do to_json and obtain the id_token
-    #     token_uri=os.environ["GOOGLE_TOKEN_URI"],
-    #     client_id=os.environ["GOOGLE_CLIENT_ID"],
-    #     client_secret=os.environ["GOOGLE_CLIENT_SECRET"],
-    #     scopes=[os.environ["GOOGLE_TOKEN_SCOPES"]],
-    #     expiry=datetime.datetime.strptime(os.environ["GOOGLE_TOKEN_EXPIRY"], '%Y-%m-%dT%H:%M:%S.%fZ')
-    # )
-    # # If there are no (valid) credentials available, let the user log in.
-    #if not creds or not creds.valid:
-    creds=None
-    if creds==None:#if creds and creds.expired and creds.refresh_token:
-        print("REFRESHING TOKEN")
-        creds.refresh(Request())
-        new_creds = creds.to_json()
-        print("REFRESHED TOKEN: " + new_creds)
-        os.environ["GOOGLE_AUTH_TOKEN"] = new_creds["token"]
-        os.environ["GOOGLE_REFRESH_TOKEN"] = new_creds["refresh_token"]
-        os.environ["GOOGLE_TOKEN_EXPIRY"] = new_creds["expiry"]
-    #     else:
-    #         flow = InstalledAppFlow.from_client_secrets_file(
-    #             'credentials.json', SCOPES)
-    #         creds = flow.run_local_server(port=5001)
-    #     # Save the credentials for the next run
-    #     with open('./token.json', 'w') as token:
-    #         #token.write(creds.to_json())
-    #         token.write("TEST123")
-    #     with open('./token.json', 'r') as f:
-    #         print(f.read())
     try:
+        #Creds are guaranteed to be valid since they were refreshed in loginCallback
+        creds = Credentials(
+            token=request.cookies.get("google_token"),
+            token_uri=os.environ["GOOGLE_TOKEN_URI"],
+            client_id=os.environ["GOOGLE_CLIENT_ID"],
+            client_secret=os.environ["GOOGLE_CLIENT_SECRET"],
+            scopes=[os.environ["GOOGLE_TOKEN_SCOPES"]]
+        )
         service = build('calendar', 'v3', credentials=creds)
-        # calendars = service.calendarList().list().execute()
-        # print(calendars)
+        
         #Call the Calendar API
         now = datetime.datetime.utcnow().isoformat() + 'Z'  # 'Z' indicates UTC time
         print('Getting the upcoming 10 events')
@@ -79,29 +98,20 @@ def index():
         print('An error occurred: %s' % error)
     return render_template("index.html", events=events, data=request.args.get("data"))
 
-def get_song_feature(auth_token, song_id):
-    song_feature_request = {
-        "url": "https://api.spotify.com/v1/audio-features/" + song_id,
-        "headers": {
-            "Authorization": "Bearer " + auth_token,
-            "Content-Type": "application/json",
-        },
-    }
-    song_feature_response = requests.get(
-        url=song_feature_request["url"], headers=song_feature_request["headers"]
-    )
-    return song_feature_response.json()
-
-
 @api.route("/buildPlaylist", methods=["GET"])
+@login_required
 def build_playlist():
     # SEARCH FOR FIRST TWO SONGS - add some sort of error handling in case song doesn't exist
     token = request.args.get("token")
+    playlist_url = ""
+    user_name = ""
     # Using steps
     if request.args.get("first_song") != "":
         user_songs = [request.args.get("first_song"), request.args.get("last_song")]
-        songs = build_playlist_from_steps(token, user_songs, int(request.args.get("steps_input")), False)
-        return {"songs": songs, "steps": request.args.get("steps_input")}
+        playlist_obj = build_playlist_from_steps(token, user_songs, int(request.args.get("steps_input")), False)
+        playlist_url = playlist_obj["playlist_url"]
+        user_name = playlist_obj["display_name"]
+        #return {"songs": songs, "steps": request.args.get("steps_input")}
     #Using events
     else:    
         events = literal_eval(request.args.get("events"))
@@ -109,10 +119,17 @@ def build_playlist():
         for i in range(len(events)):
             event_songs.append(request.args.get("event_" + str(i+1) + "_" + events[i]["summary"] + "_song"))
         event_songs.append(request.args.get("last_song"))
-        songs = build_playlist_from_events(token, events, event_songs)
+        playlist_obj = build_playlist_from_events(token, events, event_songs)
+        playlist_url = playlist_obj["playlist_url"]
+        user_name = playlist_obj["display_name"]
         songs = json.dumps(songs, default=str)
+    data = {
+        "playlist_url" : playlist_url,
+        "created_by" : user_name,
+        "base_url" : os.environ["ROOT_URL"]
+    }
 
-    return render_template("info.html")
+    return render_template("info.html", data=data)
 
 def build_playlist_from_events(token, events, event_songs):
     time_intervals = []
@@ -168,11 +185,19 @@ def build_playlist_from_events(token, events, event_songs):
         })
     #print("songobjs: ", song_objs)
     #Create the playlist in spotify
-    user_id = get_current_user_id(token)
+    user_obj = get_current_user_id(token)
+    user_id = user_obj["id"]
+    display_name = user_obj["display_name"]
     playlist_name = "TuneTimePlaylist-" + datetime.datetime.today().strftime('%Y-%m-%d')
     playlist_create_response = create_spotify_playlist(token, user_id, playlist_name)
     playlist_modify_response = modify_spotify_playlist(token, playlist_create_response["id"], song_objs)
-    return {"song_names" : song_names, "song_ids":song_ids, "playlist_creation" : playlist_modify_response}
+    return {
+        "song_names" : song_names,
+        "song_ids":song_ids,
+        "playlist_creation" : playlist_modify_response,
+        "playlist_url": playlist_create_response["external_urls"]["spotify"],
+        "display_name": display_name
+    }
 
 def build_playlist_from_steps(token, user_songs, steps, called_from_events):
     for i in range(2):
@@ -235,15 +260,32 @@ def build_playlist_from_steps(token, user_songs, steps, called_from_events):
     print("SONGS: ", songs)
     #Create playlist in spotify
     if called_from_events == False: #without this we would have created a seperate playlist for each interval
-        user_id = get_current_user_id(token)
+        user_obj = get_current_user_id(token)
+        user_id = user_obj["id"]
+        display_name = user_obj["display_name"]
         playlist_create_response = create_spotify_playlist(token, user_id, "TuneTimePlaylist")
         playlist_modify_response = modify_spotify_playlist(token, playlist_create_response["id"], songs)
-        #print("PLAYLIST CREATION: ", playlist_modify_response)
-    
-    return {"song_names": song_list_names,"song_ids": song_list_ids, "steps": steps}
+        print("PLAYLIST CREATION: ", playlist_modify_response)
+    return {
+        "song_names": song_list_names,
+        "song_ids": song_list_ids, 
+        "steps": steps, 
+        "playlist_url": playlist_create_response["external_urls"]["spotify"],
+        "display_name": display_name
+    }
 
-# TODO: ADD GENRE CARRYOVER - e.g if first is rock and soul, second has to be at least either rock or soul to be considered similar
-# HOW - take all genres that are the same between the previous and current song and add to the list of genres to search for
+def get_song_feature(auth_token, song_id):
+    song_feature_request = {
+        "url": "https://api.spotify.com/v1/audio-features/" + song_id,
+        "headers": {
+            "Authorization": "Bearer " + auth_token,
+            "Content-Type": "application/json",
+        },
+    }
+    song_feature_response = requests.get(
+        url=song_feature_request["url"], headers=song_feature_request["headers"]
+    )
+    return song_feature_response.json()
 
 def modify_spotify_playlist(token, playlist_id, songs):
     data = {
@@ -294,7 +336,7 @@ def get_current_user_id(auth_token):
     user_id = requests.get(
         url=user_id_request["url"], headers=user_id_request["headers"]
     ).json()
-    return user_id["id"]
+    return user_id
 
 def search_song(auth_token, song_name):
     query_song = song_name.replace(" ", "%")
@@ -336,6 +378,12 @@ def search_song(auth_token, song_name):
 
 @api.route("/", methods=["GET"])
 def authorize():
+    #Ensure GOOGLE token is valid
+    print("Searching for cookie...")
+    token = request.cookies.get('google_token')
+    if token is None:
+        print("No cookie found ")
+        return redirect(url_for("login"))
     client_id = "4ed89afd07c943c896d7a53da23cdaff"
     secret = "fsdkfansmd,fnas,df"
     red_uri = os.environ["ROOT_URL"] + "/callback"
@@ -353,10 +401,12 @@ def authorize():
     token_request = {
         "url": "https://accounts.spotify.com/authorize?" + query_params,
     }
+    #After user authorizes, redirects to /callback
     return redirect(token_request["url"])
 
 
 @api.route("/callback", methods=["GET"])
+@login_required
 def callback():
     client_id = "4ed89afd07c943c896d7a53da23cdaff"
     client_secret = "f0e2a9ce27bd4629ba70073446f9633e"
@@ -380,6 +430,7 @@ def callback():
         data=token_request["body"],
         headers=token_request["headers"],
     )
+    print("SPOTIFY AUTH RESPONSE: " + str(response.json()))
     return redirect(url_for("index", data=response.json()["access_token"]))
 
 
@@ -394,22 +445,6 @@ def add_playlist_to_spotify(auth_token, song_list):
     user_id = requests.get(
         url=user_id_request["url"], headers=user_id_request["headers"]
     ).json()
-    # add_request = {
-    #     "url" : "https://accounts.spotify.com/api/token",
-    #     "body" : {
-    #         "grant_type" : "client_credentials"
-    #     },
-    #     "headers" : {
-    #         "Authorization" : "Basic " + auth_token,
-    #         "Content-Type" : "application/x-www-form-urlencoded",
-    #     }
-    # }
-
-    # response = requests.post(
-    #     url=token_request["url"],
-    #     data=token_request["body"],
-    #     headers=token_request["headers"]
-    # )
     return user_id
 
 
@@ -578,42 +613,3 @@ def get_artist_genres(auth_token, artist_id):
 
 if __name__ == "__main__":
     api.run()
-
-    # #def get_auth_token():
-    # client_id = '4ed89afd07c943c896d7a53da23cdaff'
-    # client_secret = 'f0e2a9ce27bd4629ba70073446f9633e'
-    # client_auth = client_id + ":" + client_secret
-    # secret = "fsdkfansmd,fnas,df"
-    # #auth_token = base64.b64encode(client_auth.encode('ascii')).decode('ascii')
-
-    # query_params = urlencode({
-    #     "client_id": client_id,
-    #     "response_type": "code",
-    #     "redirect_uri": os.environ["ROOT_URL"] + "/callback",
-    #     "state": secret,
-    #     "scope" : "user-read-private playlist-read-private playlist-modify-private"
-    # })
-
-    # token_request = {
-    #     "url" : "https://accounts.spotify.com/authorize?" + query_params,
-    # }
-
-    # token_response = requests.get(url=token_request["url"])
-    # # token_request = {
-    # #     "url" : "https://accounts.spotify.com/api/token",
-    # #     "body" : {
-    # #         "grant_type" : "client_credentials", "user-read-private"#, playlist-read-private, playlist-modify-private"
-    # #     },
-    # #     "headers" : {
-    # #         "Authorization" : "Basic " + auth_token,
-    # #         "Content-Type" : "application/x-www-form-urlencoded",
-    # #     }
-    # # }
-
-    # # response = requests.post(
-    # #     url=token_request["url"],
-    # #     data=token_request["body"],
-    # #     headers=token_request["headers"]
-    # # )
-    # # return token_response.json()#["access_token"]
-    # return jsonify(token_response.json())

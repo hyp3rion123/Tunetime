@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <script src="//ajax.googleapis.com/ajax/libs/jquery/1.8.2/jquery.min.js"></script>
+    <script src="https://apis.google.com/js/client:platform.js?onload=start" async defer></script>></script>
+    <link href="{{ url_for('static',filename='styles/main.css') }}" rel="stylesheet" type="text/css">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Poppins">
+    <title>TuneTime</title>
+    <script>
+        function start() {
+            gapi.load('auth2', function() {
+                auth2 = gapi.auth2.init({
+                client_id: os.environ["GOOGLE_CLIENT_ID"],
+                scope: 'https://www.googleapis.com/auth/calendar.readonly'
+                });
+            });
+        }
+    </script>
+</head>
+<body>
+    <script src="{{url_for('static', filename='login.js')}}"></script>
+    <div class="page_wrapper font-poppins">
+        <div class="card_outer">
+            <div class="card_picture"></div>
+            <div class="card_body">
+                <h2 class="form_title">TuneTime</h2>
+                <button id="login_button" value="Login" onclick="window.location.href='{{ auth_url }}'">Login</button>
+                <script>
+                    $('#login_button').click(function() {
+                        auth2.signIn().then(signInCallback);
+                    });
+                </script>
+            </div>
+        </div>  
+    </div>
+    <script>
+        function signInCallback(authResult) {
+          if (authResult['code']) {
+        
+            // Send the code to the server
+            $.ajax({
+              type: 'GET',
+              url: os.environ["ROOT_URL"] + '/loginCallback',
+              // Always include an `X-Requested-With` header in every AJAX request,
+              // to protect against CSRF attacks.
+              headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+              },
+              contentType: 'application/octet-stream; charset=utf-8',
+              processData: false,
+              data: authResult['code']
+            });
+          } else {
+                alert("There was an error processing your Google sign-in")
+          }
+        }
+    </script>
+</body>
