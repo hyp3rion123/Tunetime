@@ -15,19 +15,15 @@
             <h2 class="form_title">TuneTime</h2>
             <form action="/buildPlaylist">
                 <input name="use_calendar_state_checkbox" type="checkbox" id="use_calendar_state_checkbox" value="song_source">
-                <label for="use_calendar_state_checkbox" id="use_calendar_state_checkbox_label">Using Calendar Events</label>
-                <div name="events_container" class="song_source" id="events_container">
-                    {% for event in events %}
-                        <input name="event_{{ loop.index }}_checkbox" type="checkbox" id="event_{{ loop.index }}_checkbox" value="{{ event.get('summary') }}">
-                        <label class="event_checkbox_labels" for="event_{{ loop.index }}_checkbox">{{ event.get('summary') }} at {{ event['start'].get('dateTime', event['start'].get('date'))[11:16] }}</label>
-                        <input name="event_{{ loop.index }}_{{ event.get('summary') }}_song" type="text" class="{{ event.get('summary') }} selectt" id="event_{{ loop.index }}_song_input" placeholder="First Song"><br>
-                    {% endfor %}
-                </div>
+                <label for="use_calendar_state_checkbox" id="use_calendar_state_checkbox_label">Using Calendar Events</label><br>
+                <input type="date" id="event_date_select" name="event_date_select">
+                <div name="events_container" class="song_source" id="events_container"></div>
                 <input name="first_song" id="first_song" type="text" placeholder="First song" required=true class="non-events front-page-input"><br>
                 <input name="last_song" id="last_song" type="text" placeholder="Last Song" required=true class="front-page-input"><br>
                 <input id="steps_input" name="steps_input" type="text" placeholder="Steps" required=true class="non-events front-page-input"><br>
                 <input name="token" type="hidden" value="{{ data }}"></input>
-                <input name="events" type="hidden" value="{{ events }}"></input>
+                <input id="events" name="events" type="hidden" value="{{ events }}"></input>
+                <input id="last_selected_event" name="last_selected_event" type="hidden" value="-1">
                 <input type="submit" value="Submit" id="submit_button"></input>
                 <div id="loading_sign">Loading<span id="load_span"></span></div>
             </form>
