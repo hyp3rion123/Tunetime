@@ -38,15 +38,19 @@ def login():
 #Prevents direct access to the endpoints without authentication
 def login_required(f):
     def decorated_function(*args, **kwargs):
-        if request.cookies.get('google_token') is None or request.args.get("data") is None or request.args.get("data").length < 10:
+        #check which endpoint is being accessed
+        if (request.path == "/loginCallback" or request.path == '/callback') and request.args.get("code") is None:
+            print("no code found")
+            return redirect('/')
+        elif request.cookies.get('google_token') is None or request.args.get("data") is None:
             return redirect('/')
         return f(*args, **kwargs)
-        decorated_function.__name__ = f.__name__
-        decorated_function.__doc__ = f.__doc__
+    decorated_function.__name__ = f.__name__
+    decorated_function.__doc__ = f.__doc__
     return decorated_function
 
 @api.route("/loginCallback", methods=["GET"])
-@login_required
+#@login_required
 def login_callback():
     SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
     #Extract code and exchange for token
@@ -62,7 +66,7 @@ def login_callback():
     return resp
 
 @api.route("/index", methods=["GET"])
-@login_required
+#@login_required
 def index():
     try:
         #Creds are guaranteed to be valid since they were refreshed in loginCallback
@@ -77,29 +81,41 @@ def index():
         
         #Call the Calendar API
         now = datetime.datetime.utcnow().isoformat() + 'Z'  # 'Z' indicates UTC time
+        #three months from today
+        timeMax = (datetime.datetime.utcnow() + datetime.timedelta(days=94)).isoformat() + 'Z'
         print('Getting the upcoming 10 events')
-        events_result = service.events().list(calendarId='primary', timeMin=now,
-                                              maxResults=10, singleEvents=True,
+        events_result = service.events().list(calendarId='primary', timeMin=now, timeMax=timeMax, singleEvents=True,
                                               orderBy='startTime').execute()                                    
         events = events_result.get('items', [])
 
         if not events:
             print('No upcoming events found.')
             return render_template("index.html", events=[], data=request.args.get("data"))
-
-        # Prints the start and name of the next 10 events
+        formatted_events = {}
+        # Prints the start and name of the events
         for event in events:
             start = event['start'].get('dateTime', event['start'].get('date'))
             end = event['end'].get('dateTime', event['end'].get('date'))
             duration = (datetime.datetime.strptime(end, '%Y-%m-%dT%H:%M:%S%z') - datetime.datetime.strptime(start, '%Y-%m-%dT%H:%M:%S%z'))
             print(start, event['summary'], duration)
 
+            event = {
+                "start": event['start'],
+                "end": event['end'],
+                "summary": event['summary']
+            }
+            key = start[0:10]
+            if key not in formatted_events:
+                formatted_events[key] = [event]
+            else:
+                formatted_events[key].append(event)
+        print(formatted_events)
     except HttpError as error:
         print('An error occurred: %s' % error)
-    return render_template("index.html", events=events, data=request.args.get("data"))
+    return render_template("index.html", events=formatted_events, data=request.args.get("data"))
 
 @api.route("/buildPlaylist", methods=["GET"])
-@login_required
+#@login_required
 def build_playlist():
     # SEARCH FOR FIRST TWO SONGS - add some sort of error handling in case song doesn't exist
     token = request.args.get("token")
@@ -115,14 +131,18 @@ def build_playlist():
     #Using events
     else:    
         events = literal_eval(request.args.get("events"))
+        #date_select = request.args.get("event_date_select")
+        #print("DATE SELECT: ", date_select)
         event_songs = []
         for i in range(len(events)):
             event_songs.append(request.args.get("event_" + str(i+1) + "_" + events[i]["summary"] + "_song"))
         event_songs.append(request.args.get("last_song"))
-        playlist_obj = build_playlist_from_events(token, events, event_songs)
+        last_selected_event = int(request.args.get("last_selected_event"))
+        playlist_obj = build_playlist_from_events(token, events, event_songs, last_selected_event)
         playlist_url = playlist_obj["playlist_url"]
         user_name = playlist_obj["display_name"]
-        songs = json.dumps(songs, default=str)
+        print("DISPLAY NAME IN BUILD PLAYLIST: ", user_name)
+       # songs = json.dumps(songs, default=str)
     data = {
         "playlist_url" : playlist_url,
         "created_by" : user_name,
@@ -131,7 +151,7 @@ def build_playlist():
 
     return render_template("info.html", data=data)
 
-def build_playlist_from_events(token, events, event_songs):
+def build_playlist_from_events(token, events, event_songs, last_selected_event):
     time_intervals = []
     current_interval_index = 0
     #Find first song 
@@ -147,7 +167,7 @@ def build_playlist_from_events(token, events, event_songs):
             time_intervals.append(int((end-start).total_seconds()))#{"start": events[i]["start"], "end": events[i]["end"]})
             current_interval_index = i
     #Add last interval
-    end = datetime.datetime.strptime(events[-1]["end"]["dateTime"], '%Y-%m-%dT%H:%M:%S%z')
+    end = datetime.datetime.strptime(events[last_selected_event]["end"]["dateTime"], '%Y-%m-%dT%H:%M:%S%z')
     start = datetime.datetime.strptime(events[current_interval_index]["start"]["dateTime"], '%Y-%m-%dT%H:%M:%S%z')
     time_intervals.append(int((end-start).total_seconds()))
 
@@ -166,7 +186,7 @@ def build_playlist_from_events(token, events, event_songs):
     song_objs = []
     for i in range(len(time_intervals)):
         interval_songs = [event_songs[i], event_songs[i+1]]
-        interval_steps = floor(time_intervals[i] / 240) #average song length is 4 minutes = 240 seconds - 1 because we don't duplicate interval boundary songs
+        interval_steps = floor(time_intervals[i] / 197) #average song length(Spotify 2020) is 3 minutes and 17 seconds = 197 seconds
         songs = build_playlist_from_steps(token, interval_songs, interval_steps, True)
         for id in songs["song_ids"]:
             song_ids.append(id)
@@ -188,6 +208,7 @@ def build_playlist_from_events(token, events, event_songs):
     user_obj = get_current_user_id(token)
     user_id = user_obj["id"]
     display_name = user_obj["display_name"]
+    print("DISPLAY NAME IN BUILD PLAYLIST FROM EVENTS: ", display_name)
     playlist_name = "TuneTimePlaylist-" + datetime.datetime.today().strftime('%Y-%m-%d')
     playlist_create_response = create_spotify_playlist(token, user_id, playlist_name)
     playlist_modify_response = modify_spotify_playlist(token, playlist_create_response["id"], song_objs)
@@ -258,11 +279,18 @@ def build_playlist_from_steps(token, user_songs, steps, called_from_events):
     song_list_ids.append(current_song["song_id"])
     artist_names.append(current_song["artist_name"])
     print("SONGS: ", songs)
+    playlist_create_response = {
+        "external_urls" : {
+            "spotify" : "",
+        }
+    }
+    display_name = ""
     #Create playlist in spotify
     if called_from_events == False: #without this we would have created a seperate playlist for each interval
         user_obj = get_current_user_id(token)
         user_id = user_obj["id"]
         display_name = user_obj["display_name"]
+        print("DISPLAY NAME IN BUILD PLAYLIST FROM STEPS: ", display_name)
         playlist_create_response = create_spotify_playlist(token, user_id, "TuneTimePlaylist")
         playlist_modify_response = modify_spotify_playlist(token, playlist_create_response["id"], songs)
         print("PLAYLIST CREATION: ", playlist_modify_response)
@@ -406,7 +434,7 @@ def authorize():
 
 
 @api.route("/callback", methods=["GET"])
-@login_required
+#@login_required
 def callback():
     client_id = "4ed89afd07c943c896d7a53da23cdaff"
     client_secret = "f0e2a9ce27bd4629ba70073446f9633e"
@@ -486,24 +514,30 @@ def get_similarity_score(auth_token, song_1, song_2, song_2_raw_features):
         "tempo",
     }
     ignore_count = 0  # used to ommit features that are skewing average(e.g if one feature is zero there is no way to tell how similar the other is)
+    print("features for ", song_1, ": ", first_song_features)
+    print("features for ", song_2, ": ", second_song_features)
     for ftr in features:
-        ftr_1 = float(first_song_features[ftr])
-        ftr_2 = float(second_song_features[ftr])
-        if ftr_1 < 0 and ftr_2 < 0:
-            ftr_1 = -1 * ftr_1
-            ftr_2 = -1 * ftr_2
-        elif ftr_1 == 0 and ftr_2 == 0:
-            ftr_1 = 1
-            ftr_2 = 1
-        elif ftr_1 == 0 or ftr_2 == 0:
+        if ftr in first_song_features and ftr in second_song_features:
+            ftr_1 = float(first_song_features[ftr])
+            ftr_2 = float(second_song_features[ftr])
+            if ftr_1 < 0 and ftr_2 < 0:
+                ftr_1 = -1 * ftr_1
+                ftr_2 = -1 * ftr_2
+            elif ftr_1 == 0 and ftr_2 == 0:
+                ftr_1 = 1
+                ftr_2 = 1
+            elif ftr_1 == 0 or ftr_2 == 0:
+                ignore_count += 1
+                #   print("cannot determine similarity for " + ftr)
+                continue
+            elif min(ftr_1, ftr_2) / max(ftr_1, ftr_2) < 0.01:
+                ignore_count += 1
+                #   print("cannot determine similarity for " + ftr)
+                continue
+            similarity += min(ftr_1, ftr_2) / max(ftr_1, ftr_2)
+        else :
             ignore_count += 1
-            #   print("cannot determine similarity for " + ftr)
-            continue
-        elif min(ftr_1, ftr_2) / max(ftr_1, ftr_2) < 0.01:
-            ignore_count += 1
-            #   print("cannot determine similarity for " + ftr)
-            continue
-        similarity += min(ftr_1, ftr_2) / max(ftr_1, ftr_2)
+            print("cannot determine similarity for " + ftr)
     # print(min(ftr_1, ftr_2) / max(ftr_1, ftr_2), "% similarity in " + ftr)
     similarity = abs(similarity / (len(features) - ignore_count))
     # print("Total similarity: ", similarity)
@@ -550,7 +584,7 @@ def get_recommendations(
             "seed_artists": seed_artists,
             "seed_genres": seed_genres,
             "seed_tracks": seed_tracks,
-            "limit": "20",
+            "limit": "10",
             "target_danceability": str(song_features["danceability"]),
             "target_energy": str(song_features["energy"]),
             "target_loudness": str(song_features["loudness"]),
@@ -612,4 +646,5 @@ def get_artist_genres(auth_token, artist_id):
 
 
 if __name__ == "__main__":
+    api.debug = True
     api.run()
