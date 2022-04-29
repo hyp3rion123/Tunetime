@@ -9,6 +9,7 @@
 #from curses.ascii import CR
 #from re import search
 #from xml.parsers import expat
+from operator import ge
 import requests, base64
 from ast import literal_eval
 from math import floor
@@ -157,8 +158,8 @@ def build_playlist(request_args, playlist_id):
     if request_args.get("first_song") != "":
         user_songs = [request_args.get("first_song"), request_args.get("last_song")]
         playlist_obj = build_playlist_from_steps(token, user_songs, int(request_args.get("steps_input")), False, playlist_id)
-        playlist_url = playlist_obj["playlist_url"]
-        user_name = playlist_obj["display_name"]
+        # playlist_url = playlist_obj["playlist_url"]
+        # user_name = playlist_obj["display_name"]
         #return {"songs": songs, "steps": request_args.get("steps_input")}
     #Using events
     else:    
@@ -170,7 +171,7 @@ def build_playlist(request_args, playlist_id):
             event_songs.append(request_args.get("event_" + str(i+1) + "_" + events[i]["summary"] + "_song"))
         event_songs.append(request_args.get("last_song"))
         last_selected_event = int(request_args.get("last_selected_event"))
-        playlist_obj = build_playlist_from_events(token, events, event_songs, last_selected_event, playlist_id)
+        build_playlist_from_events(token, events, event_songs, last_selected_event, playlist_id)
         # playlist_url = playlist_obj["playlist_url"]
         # user_name = playlist_obj["display_name"]
         # print("DISPLAY NAME IN BUILD PLAYLIST: ", user_name)
@@ -236,11 +237,12 @@ def build_playlist_from_events(token, events, event_songs, last_selected_event, 
         })
     print("PLAYLIST CREATION COMPLETE, songobjs: ", song_objs)
     #Modify the playlist in spotify
-    playlist_modify_response = modify_spotify_playlist(token, playlist_id, song_objs)
+    #playlist_modify_response = modify_spotify_playlist(token, playlist_id, song_objs)
+    #print("PLAYLIST MODIFIED ON SPOTIFY: ", playlist_modify_response)
     return {
         "song_names" : song_names,
         "song_ids":song_ids,
-        "playlist_creation" : playlist_modify_response,
+        # "playlist_creation" : playlist_modify_response,
         # "playlist_url": playlist_create_response["external_urls"]["spotify"],
         # "display_name": display_name
     }
@@ -311,14 +313,15 @@ def build_playlist_from_steps(token, user_songs, steps, called_from_events, play
     # }
     # display_name = ""
     #Create playlist in spotify
-    if called_from_events == False: #without this we would have created a seperate playlist for each interval
-        # user_obj = get_current_user_id(token)
-        # user_id = user_obj["id"]
-        # display_name = user_obj["display_name"]
-        # print("DISPLAY NAME IN BUILD PLAYLIST FROM STEPS: ", display_name)
-        # playlist_create_response = create_spotify_playlist(token, user_id, "TuneTimePlaylist")
-        playlist_modify_response = modify_spotify_playlist(token, playlist_id, songs)
-        print("PLAYLIST CREATION: ", playlist_modify_response)
+    # if called_from_events == False: #without this we would have created a seperate playlist for each interval
+    #     # user_obj = get_current_user_id(token)
+    #     # user_id = user_obj["id"]
+    #     # display_name = user_obj["display_name"]
+    #     # print("DISPLAY NAME IN BUILD PLAYLIST FROM STEPS: ", display_name)
+    #     # playlist_create_response = create_spotify_playlist(token, user_id, "TuneTimePlaylist")
+    #     playlist_modify_response = modify_spotify_playlist(token, playlist_id, songs)
+    playlist_modify_response = modify_spotify_playlist(token, playlist_id, songs)
+    print("PLAYLIST CREATION: ", playlist_modify_response)
     return {
         "song_names": song_list_names,
         "song_ids": song_list_ids, 
@@ -326,6 +329,26 @@ def build_playlist_from_steps(token, user_songs, steps, called_from_events, play
         # "playlist_url": playlist_create_response["external_urls"]["spotify"],
         # "display_name": display_name
     }
+
+def safe_request(request, response):
+    #If api rate limit is exceeded, wait for the value specified in the Retry-After header
+    data = ""
+    retry_after = response.headers["Retry-After"]
+    print("API RATE LIMIT EXCEEDED for request: ", request)
+    print("RETRY AFTER: ", retry_after)
+    if "data" in request:
+        data = request["data"]
+    # # printing the start time
+    # print("The time of code execution begin is : ", end="")
+    # print(time.ctime())
+    time.sleep(int(retry_after)+1)
+    # # printing the end time
+    # print("The time of code execution end is : ", end="")
+    # print(time.ctime())
+    response = requests.get(
+        url=request["url"], headers=request["headers"], data = data
+    )
+    return response
 
 def get_song_feature(auth_token, song_id):
     song_feature_request = {
@@ -338,20 +361,8 @@ def get_song_feature(auth_token, song_id):
     song_feature_response = requests.get(
         url=song_feature_request["url"], headers=song_feature_request["headers"]
     )
-    #If api rate limit is exceeded, wait for the value specified in the Retry-After header
     if song_feature_response.status_code == 429:
-        retry_after = song_feature_response.headers["Retry-After"]
-        print("API RATE LIMIT EXCEEDED, RETRY AFTER: ", retry_after)
-        # printing the start time
-        print("The time of code execution begin is : ", end="")
-        print(time.ctime())
-        time.sleep(int(retry_after)+1)
-        # printing the end time
-        print("The time of code execution end is : ", end="")
-        print(time.ctime())
-        song_feature_response = requests.get(
-            url=song_feature_request["url"], headers=song_feature_request["headers"]
-        )
+        song_feature_response = safe_request(song_feature_request, song_feature_response) #in case spotify api request limit is reached
     return song_feature_response.json()
 
 def modify_spotify_playlist(token, playlist_id, songs):
@@ -374,6 +385,8 @@ def modify_spotify_playlist(token, playlist_id, songs):
         headers=playlist_modify_request["headers"],
         data=playlist_modify_request["data"],
     )
+    if playlist_modify_response.status_code == 429:
+        playlist_modify_response = safe_request(playlist_modify_request, playlist_modify_response)
     return playlist_modify_response.status_code
 
 def create_spotify_playlist(auth_token, user_id, playlist_name):
@@ -390,6 +403,8 @@ def create_spotify_playlist(auth_token, user_id, playlist_name):
         headers=playlist_request["headers"],
         data=playlist_request["data"],
     )
+    if playlist_response.status_code == 429:
+        playlist_response = safe_request(playlist_request, playlist_response)
     return playlist_response.json()
 
 def get_current_user_id(auth_token):
@@ -400,10 +415,13 @@ def get_current_user_id(auth_token):
             "Content-Type": "application/json",
         },
     }
-    user_id = requests.get(
+    user_id_response = requests.get(
         url=user_id_request["url"], headers=user_id_request["headers"]
-    ).json()
-    return user_id
+    )
+    print("USER ID RESPONSE: ", user_id_response)
+    if user_id_response.status_code == 429:
+        user_id_response = safe_request(user_id_request, user_id_response) #in case spotify api request limit is reached
+    return user_id_response.json()
 
 def search_song(auth_token, song_name):
     query_song = song_name.replace(" ", "%")
@@ -425,6 +443,8 @@ def search_song(auth_token, song_name):
     search_response = requests.get(
         url=search_request["url"], headers=search_request["headers"]
     )
+    if search_response.status_code == 429:
+        search_response = safe_request(search_request, search_response)
     if (len(search_response.json()["tracks"]["items"]) == 0):
         err_msg = "Error, song " + song_name + " could not be found!"
         raise BadRequest(err_msg)
@@ -497,21 +517,6 @@ def callback():
     )
     print("SPOTIFY AUTH RESPONSE: " + str(response.json()))
     return redirect(url_for("index", data=response.json()["access_token"]))
-
-
-def add_playlist_to_spotify(auth_token, song_list):
-    user_id_request = {
-        "url": "https://api.spotify.com/v1/me",
-        "headers": {
-            "Authorization": "Bearer " + auth_token,
-            "Content-Type": "application/json",
-        },
-    }
-    user_id = requests.get(
-        url=user_id_request["url"], headers=user_id_request["headers"]
-    ).json()
-    return user_id
-
 
 def select_unchosen_song(auth_token, song_list, chosen_songs, step_features, artist_names):
     most_similar_song = song_list[0]
@@ -644,8 +649,10 @@ def get_recommendations(
     reccomend_response = requests.get(
         url=reccomend_request["url"], headers=reccomend_request["headers"]
     )
+    if reccomend_response.status_code == 429:
+        reccomend_response = safe_request(reccomend_request, reccomend_response)
     recommended_objs = []
-    # print("RESPONSEEE: " , reccomend_response.json())
+    print("RESPONSEEE: " , reccomend_response.json())
     for i in range(10):
         recommended_objs.append(
             {
@@ -676,21 +683,9 @@ def get_artist_genres(auth_token, artist_id):
     genre_response = requests.get(
         url=search_request["url"], headers=search_request["headers"]
     )
-    print("ARTISTS GENRES: ", genre_response, "and in JSON FORMAT: ", genre_response.json())
-    #If api rate limit is exceeded, wait for the value specified in the Retry-After header
     if genre_response.status_code == 429:
-        retry_after = genre_response.headers["Retry-After"]
-        print("API RATE LIMIT EXCEEDED, RETRY AFTER: ", retry_after)
-        # printing the start time
-        print("The time of code execution begin is : ", end="")
-        print(time.ctime())
-        time.sleep(int(retry_after)+1)
-        # printing the end time
-        print("The time of code execution end is : ", end="")
-        print(time.ctime())
-        genre_response = requests.get(
-            url=search_request["url"], headers=search_request["headers"]
-        )
+        genre_response = safe_request(search_request, genre_response)
+    print("GENRE_RESPONSE: ", genre_response.json())
     if genre_response.json()["genres"]:
         return genre_response.json()["genres"][0]
     return None
