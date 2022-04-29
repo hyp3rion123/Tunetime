@@ -24,8 +24,14 @@ from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from werkzeug.exceptions import BadRequest
+from worker import conn
+import redis
+from rq import Queue
 
 api = Flask(__name__)
+redis_url = os.getenv('REDISTOGO_URL', 'redis://localhost:6379')
+conn = redis.from_url(redis_url)
+q = Queue(connection=conn)
 
 @api.route("/login", methods=["GET"])
 def login():
@@ -117,6 +123,25 @@ def index():
 
 @api.route("/buildPlaylist", methods=["GET"])
 #@login_required
+def build_playlist_wrapper(): #used to enqueue worker processes so that the call stack doesn't get overloaded
+    job = q.enqueue(build_playlist)
+    while(job.get_status(refresh=True) != "finished"):
+        status = job.get_status(refresh=True)
+        print("waiting for job to finish, status: ", status)
+        print(job.exc_info)
+        if(status == "canceled" or status == "failed"):
+            print("JOB EXECUTION FAILURE INFO: ", job.exc_info)
+            return "job failed"
+        time.sleep(1)
+    print("job finished")
+    print("BUILD PLAYLIST JOB: ", job, "JOB RESULT: ", job.result)
+    data = {
+        "playlist_url" : "",
+        "created_by" : "",
+        "base_url" : os.environ["ROOT_URL"]
+    }
+    return render_template("info.html", data=data)
+
 def build_playlist():
     # SEARCH FOR FIRST TWO SONGS - add some sort of error handling in case song doesn't exist
     token = request.args.get("token")
@@ -149,8 +174,7 @@ def build_playlist():
         "created_by" : user_name,
         "base_url" : os.environ["ROOT_URL"]
     }
-
-    return render_template("info.html", data=data)
+    #return render_template("info.html", data=data)
 
 def build_playlist_from_events(token, events, event_songs, last_selected_event):
     time_intervals = []
