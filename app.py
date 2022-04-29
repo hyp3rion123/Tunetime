@@ -222,6 +222,7 @@ def build_playlist_from_events(token, events, event_songs, last_selected_event):
     }
 
 def build_playlist_from_steps(token, user_songs, steps, called_from_events):
+    feature_map = {} #used so that the Spotify API isn't called every time a song is searched for again 
     for i in range(2):
         user_songs[i] = search_song(token, user_songs[i])
         # Add song genre too - used for song similarity comparison
@@ -229,9 +230,13 @@ def build_playlist_from_steps(token, user_songs, steps, called_from_events):
     # MIN STEPS = 2
     #print(get_song_feature(token, user_songs[0]["song_id"]))
     #print(get_song_feature(token, user_songs[1]["song_id"]))
+    first_user_song_feature_obj = get_song_feature(token, user_songs[0]["song_id"], feature_map)
+    feature_map = first_user_song_feature_obj["feature_map"]
+    second_user_song_feature_obj = get_song_feature(token, user_songs[1]["song_id"], feature_map)
+    feature_map = second_user_song_feature_obj["feature_map"]
     step_features = get_step_features(
-        get_song_feature(token, user_songs[0]["song_id"]),
-        get_song_feature(token, user_songs[1]["song_id"]),
+        first_user_song_feature_obj["song_features"],
+        second_user_song_feature_obj["song_features"],
         steps,
     )
     #print("step_features: ", step_features)
@@ -254,22 +259,12 @@ def build_playlist_from_steps(token, user_songs, steps, called_from_events):
             current_song["song_genre"],
             step_features[i],
         )
-        current_song = select_unchosen_song(
-            token, potential_songs, song_list_names, step_features[i], artist_names
+        select_unchosen_song_obj = select_unchosen_song(
+            token, potential_songs, song_list_names, step_features[i], artist_names, feature_map
         )
-        # Similarity scores
-        current_song["similarity_score_first"] = round(
-            get_similarity_score(
-                token, user_songs[0]["song_id"], current_song["song_id"], None
-            ),
-            3,
-        )
-        current_song["similarity_score_last"] = round(
-            get_similarity_score(
-                token, user_songs[1]["song_id"], current_song["song_id"], None
-            ),
-            3,
-        )
+        current_song = select_unchosen_song_obj["current_song"]
+        feature_map = select_unchosen_song_obj["feature_map"]
+
         songs.append(current_song)
         song_list_names.append(current_song["song_name"])
         song_list_ids.append(current_song["song_id"])
@@ -303,7 +298,12 @@ def build_playlist_from_steps(token, user_songs, steps, called_from_events):
         "display_name": display_name
     }
 
-def get_song_feature(auth_token, song_id):
+def get_song_feature(auth_token, song_id, feature_map):
+    #Check the feature_map if song_id has been previously searched 
+    if song_id in feature_map:
+        print("FOUND SAME SONG IN FEATURE MAP")
+        return feature_map[song_id]
+
     song_feature_request = {
         "url": "https://api.spotify.com/v1/audio-features/" + song_id,
         "headers": {
@@ -314,21 +314,26 @@ def get_song_feature(auth_token, song_id):
     song_feature_response = requests.get(
         url=song_feature_request["url"], headers=song_feature_request["headers"]
     )
+    feature_map[song_id] = song_feature_response.json()
+    print("adding song to feature map, new map: ", feature_map)
     #If api rate limit is exceeded, wait for the value specified in the Retry-After header
-    # if song_feature_response.status_code == 429:
-    #     retry_after = song_feature_response.headers["Retry-After"]
-    #     print("API RATE LIMIT EXCEEDED, RETRY AFTER: ", retry_after)
-    #     # printing the start time
-    #     print("The time of code execution begin is : ", end="")
-    #     print(time.ctime())
-    #     time.sleep(int(retry_after)+1)
-    #     # printing the end time
-    #     print("The time of code execution end is : ", end="")
-    #     print(time.ctime())
-    #     song_feature_response = requests.get(
-    #         url=song_feature_request["url"], headers=song_feature_request["headers"]
-    #     )
-    return song_feature_response.json()
+    if song_feature_response.status_code == 429:
+        retry_after = song_feature_response.headers["Retry-After"]
+        print("API RATE LIMIT EXCEEDED, RETRY AFTER: ", retry_after)
+        # printing the start time
+        print("The time of code execution begin is : ", end="")
+        print(time.ctime())
+        time.sleep(int(retry_after)+1)
+        # printing the end time
+        print("The time of code execution end is : ", end="")
+        print(time.ctime())
+        song_feature_response = requests.get(
+            url=song_feature_request["url"], headers=song_feature_request["headers"]
+        )
+    return {
+        "song_features": song_feature_response.json(),
+        "feature_map" : feature_map
+    }
 
 def modify_spotify_playlist(token, playlist_id, songs):
     data = {
@@ -491,14 +496,17 @@ def add_playlist_to_spotify(auth_token, song_list):
     return user_id
 
 
-def select_unchosen_song(auth_token, song_list, chosen_songs, step_features, artist_names):
+#Select song from song_list that most closely resembles desired step_features and is not in chosen_songs
+def select_unchosen_song(auth_token, song_list, chosen_songs, step_features, artist_names, feature_map):
     most_similar_song = song_list[0]
     most_similar_score = 0
     # Choosing song is a based on feature similarity
     for i in range(len(song_list)):
-        current_similarity = get_similarity_score(
-            auth_token, song_list[i]["song_id"], None, step_features
+        current_similarity_obj = get_similarity_score(
+            auth_token, song_list[i]["song_id"], step_features, feature_map
         )
+        current_similarity = current_similarity_obj["similarity"]
+        feature_map = current_similarity_obj["feature_map"]
         if (
             song_list[i]["song_name"] not in chosen_songs
             and current_similarity > most_similar_score
@@ -508,15 +516,20 @@ def select_unchosen_song(auth_token, song_list, chosen_songs, step_features, art
             most_similar_score = current_similarity
             print("updated most similar song: ", most_similar_score)
     most_similar_song["percent_match"] = most_similar_score
-    return most_similar_song
+    return {
+        "current_song" : most_similar_song,
+        "feature_map" : feature_map
+    }
 
 
-def get_similarity_score(auth_token, song_1, song_2, song_2_raw_features):
-    first_song_features = get_song_feature(auth_token, song_1)
-    if song_2_raw_features:
-        second_song_features = song_2_raw_features
+def get_similarity_score(auth_token, song_1, step_features, feature_map):
+    if song_1 in feature_map:
+        first_song_features = feature_map[song_1]
     else:
-        second_song_features = get_song_feature(auth_token, song_2)
+        first_song_search_obj = get_song_feature(auth_token, song_1, feature_map)
+        first_song_features = first_song_search_obj["song_features"]
+        feature_map = first_song_search_obj["feature_map"]
+
     similarity = 0
     features = {
         "danceability",
@@ -530,11 +543,11 @@ def get_similarity_score(auth_token, song_1, song_2, song_2_raw_features):
     }
     ignore_count = 0  # used to ommit features that are skewing average(e.g if one feature is zero there is no way to tell how similar the other is)
     print("features for ", song_1, ": ", first_song_features)
-    print("features for ", song_2, ": ", second_song_features)
+    print("features looking to match ", step_features)
     for ftr in features:
-        if ftr in first_song_features and ftr in second_song_features:
+        if ftr in first_song_features and ftr in step_features:
             ftr_1 = float(first_song_features[ftr])
-            ftr_2 = float(second_song_features[ftr])
+            ftr_2 = float(step_features[ftr])
             if ftr_1 < 0 and ftr_2 < 0:
                 ftr_1 = -1 * ftr_1
                 ftr_2 = -1 * ftr_2
@@ -556,7 +569,10 @@ def get_similarity_score(auth_token, song_1, song_2, song_2_raw_features):
     # print(min(ftr_1, ftr_2) / max(ftr_1, ftr_2), "% similarity in " + ftr)
     similarity = abs(similarity / (len(features) - ignore_count))
     # print("Total similarity: ", similarity)
-    return similarity
+    return {
+        "similarity" : similarity,
+        "feature_map" : feature_map
+    }
 
 
 def get_step_features(start_song_features, end_song_features, steps):
@@ -593,13 +609,14 @@ def get_step_features(start_song_features, end_song_features, steps):
 def get_recommendations(
     auth_token, seed_tracks, seed_artists, seed_genres, song_features
 ):
+    reccomendation_count = 10
     # print("calling get_recommendations with auth_token: ", auth_token, " seed_tracks: ", seed_tracks, " seed_artists ", seed_artists, " seed_genres: ", seed_genres)
     encoded_qparams = urlencode(
         {
             "seed_artists": seed_artists,
             "seed_genres": seed_genres,
             "seed_tracks": seed_tracks,
-            "limit": "10",
+            "limit": str(reccomendation_count),
             "target_danceability": str(song_features["danceability"]),
             "target_energy": str(song_features["energy"]),
             "target_loudness": str(song_features["loudness"]),
@@ -624,7 +641,7 @@ def get_recommendations(
     )
     recommended_objs = []
     # print("RESPONSEEE: " , reccomend_response.json())
-    for i in range(10):
+    for i in range(reccomendation_count):
         recommended_objs.append(
             {
                 "song_name": reccomend_response.json()["tracks"][i]["name"],
@@ -655,19 +672,19 @@ def get_artist_genres(auth_token, artist_id):
         url=search_request["url"], headers=search_request["headers"]
     )
     #If api rate limit is exceeded, wait for the value specified in the Retry-After header
-    # if genre_response.status_code == 429:
-    #     retry_after = genre_response.headers["Retry-After"]
-    #     print("API RATE LIMIT EXCEEDED, RETRY AFTER: ", retry_after)
-    #     # printing the start time
-    #     print("The time of code execution begin is : ", end="")
-    #     print(time.ctime())
-    #     time.sleep(int(retry_after)+1)
-    #     # printing the end time
-    #     print("The time of code execution end is : ", end="")
-    #     print(time.ctime())
-    #     genre_response = requests.get(
-    #         url=search_request["url"], headers=search_request["headers"]
-    #     )
+    if genre_response.status_code == 429:
+        retry_after = genre_response.headers["Retry-After"]
+        print("API RATE LIMIT EXCEEDED, RETRY AFTER: ", retry_after)
+        # printing the start time
+        print("The time of code execution begin is : ", end="")
+        print(time.ctime())
+        time.sleep(int(retry_after)+1)
+        # printing the end time
+        print("The time of code execution end is : ", end="")
+        print(time.ctime())
+        genre_response = requests.get(
+            url=search_request["url"], headers=search_request["headers"]
+        )
     # print("GENRES: ", genre_response.json()["genres"])
     if genre_response.json()["genres"]:
         return genre_response.json()["genres"][0]
