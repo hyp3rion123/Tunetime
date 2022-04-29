@@ -25,12 +25,9 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from werkzeug.exceptions import BadRequest
 from worker import conn
-import redis
 from rq import Queue
 
 api = Flask(__name__)
-redis_url = os.getenv('REDISTOGO_URL', 'redis://localhost:6379')
-conn = redis.from_url(redis_url)
 q = Queue(connection=conn)
 
 @api.route("/login", methods=["GET"])
@@ -124,59 +121,68 @@ def index():
 @api.route("/buildPlaylist", methods=["GET"])
 #@login_required
 def build_playlist_wrapper(): #used to enqueue worker processes so that the call stack doesn't get overloaded
-    job = q.enqueue(build_playlist)
-    while(job.get_status(refresh=True) != "finished"):
-        status = job.get_status(refresh=True)
-        print("waiting for job to finish, status: ", status)
-        print(job.exc_info)
-        if(status == "canceled" or status == "failed"):
-            print("JOB EXECUTION FAILURE INFO: ", job.exc_info)
-            return "job failed"
-        time.sleep(1)
-    print("job finished")
-    print("BUILD PLAYLIST JOB: ", job, "JOB RESULT: ", job.result)
+    token = request.args.get("token")
+    user = get_current_user_id(token)
+    user_name = user["display_name"]
+    user_id = user["id"]
+    playlist_name = "TuneTimePlaylist-" + datetime.datetime.today().strftime('%Y-%m-%d')
+    playlist_create_response = create_spotify_playlist(token, user_id, playlist_name)
+    job = q.enqueue(build_playlist, request.args, playlist_create_response["id"], job_timeout=600)
+    # while(job.get_status(refresh=True) != "finished"):
+    #     status = job.get_status(refresh=True)
+    #     print("waiting for job to finish, status: ", status)
+    #     print(job.exc_info)
+    #     if(status == "canceled" or status == "failed"):
+    #         print("JOB EXECUTION FAILURE INFO: ", job.exc_info)
+    #         return "job failed"
+    #     time.sleep(1)
+
+    #BUILD PLAYLIST AND PUT URL HERE
+    #GET USER"S ID AND PUT HERE
+    print("job started")
+
     data = {
-        "playlist_url" : "",
-        "created_by" : "",
+        "playlist_url" : playlist_create_response["external_urls"]["spotify"],
+        "created_by" : user_name,
         "base_url" : os.environ["ROOT_URL"]
     }
     return render_template("info.html", data=data)
 
-def build_playlist():
+def build_playlist(request_args, playlist_id):
     # SEARCH FOR FIRST TWO SONGS - add some sort of error handling in case song doesn't exist
-    token = request.args.get("token")
+    token = request_args.get("token")
     playlist_url = ""
     user_name = ""
     # Using steps
-    if request.args.get("first_song") != "":
-        user_songs = [request.args.get("first_song"), request.args.get("last_song")]
-        playlist_obj = build_playlist_from_steps(token, user_songs, int(request.args.get("steps_input")), False)
+    if request_args.get("first_song") != "":
+        user_songs = [request_args.get("first_song"), request_args.get("last_song")]
+        playlist_obj = build_playlist_from_steps(token, user_songs, int(request_args.get("steps_input")), False, playlist_id)
         playlist_url = playlist_obj["playlist_url"]
         user_name = playlist_obj["display_name"]
-        #return {"songs": songs, "steps": request.args.get("steps_input")}
+        #return {"songs": songs, "steps": request_args.get("steps_input")}
     #Using events
     else:    
-        events = literal_eval(request.args.get("events"))
-        #date_select = request.args.get("event_date_select")
+        events = literal_eval(request_args.get("events"))
+        #date_select = request_args.get("event_date_select")
         #print("DATE SELECT: ", date_select)
         event_songs = []
         for i in range(len(events)):
-            event_songs.append(request.args.get("event_" + str(i+1) + "_" + events[i]["summary"] + "_song"))
-        event_songs.append(request.args.get("last_song"))
-        last_selected_event = int(request.args.get("last_selected_event"))
-        playlist_obj = build_playlist_from_events(token, events, event_songs, last_selected_event)
-        playlist_url = playlist_obj["playlist_url"]
-        user_name = playlist_obj["display_name"]
-        print("DISPLAY NAME IN BUILD PLAYLIST: ", user_name)
+            event_songs.append(request_args.get("event_" + str(i+1) + "_" + events[i]["summary"] + "_song"))
+        event_songs.append(request_args.get("last_song"))
+        last_selected_event = int(request_args.get("last_selected_event"))
+        playlist_obj = build_playlist_from_events(token, events, event_songs, last_selected_event, playlist_id)
+        # playlist_url = playlist_obj["playlist_url"]
+        # user_name = playlist_obj["display_name"]
+        # print("DISPLAY NAME IN BUILD PLAYLIST: ", user_name)
        # songs = json.dumps(songs, default=str)
-    data = {
-        "playlist_url" : playlist_url,
-        "created_by" : user_name,
-        "base_url" : os.environ["ROOT_URL"]
-    }
-    #return render_template("info.html", data=data)
+    # data = {
+    #     "playlist_url" : playlist_url,
+    #     "created_by" : user_name,
+    #     "base_url" : os.environ["ROOT_URL"]
+    # }
+    #render_template("info.html", data=data)
 
-def build_playlist_from_events(token, events, event_songs, last_selected_event):
+def build_playlist_from_events(token, events, event_songs, last_selected_event, playlist_id):
     time_intervals = []
     current_interval_index = 0
     #Find first song 
@@ -212,7 +218,7 @@ def build_playlist_from_events(token, events, event_songs, last_selected_event):
     for i in range(len(time_intervals)):
         interval_songs = [event_songs[i], event_songs[i+1]]
         interval_steps = floor(time_intervals[i] / 197) #average song length(Spotify 2020) is 3 minutes and 17 seconds = 197 seconds
-        songs = build_playlist_from_steps(token, interval_songs, interval_steps, True)
+        songs = build_playlist_from_steps(token, interval_songs, interval_steps, True, playlist_id)
         for id in songs["song_ids"]:
             song_ids.append(id)
         for name in songs["song_names"]:
@@ -228,24 +234,18 @@ def build_playlist_from_events(token, events, event_songs, last_selected_event):
             "song_id" : song_ids[i],
             "song_name" : song_names[i],
         })
-    #print("songobjs: ", song_objs)
-    #Create the playlist in spotify
-    user_obj = get_current_user_id(token)
-    user_id = user_obj["id"]
-    display_name = user_obj["display_name"]
-    print("DISPLAY NAME IN BUILD PLAYLIST FROM EVENTS: ", display_name)
-    playlist_name = "TuneTimePlaylist-" + datetime.datetime.today().strftime('%Y-%m-%d')
-    playlist_create_response = create_spotify_playlist(token, user_id, playlist_name)
-    playlist_modify_response = modify_spotify_playlist(token, playlist_create_response["id"], song_objs)
+    print("PLAYLIST CREATION COMPLETE, songobjs: ", song_objs)
+    #Modify the playlist in spotify
+    playlist_modify_response = modify_spotify_playlist(token, playlist_id, song_objs)
     return {
         "song_names" : song_names,
         "song_ids":song_ids,
         "playlist_creation" : playlist_modify_response,
-        "playlist_url": playlist_create_response["external_urls"]["spotify"],
-        "display_name": display_name
+        # "playlist_url": playlist_create_response["external_urls"]["spotify"],
+        # "display_name": display_name
     }
 
-def build_playlist_from_steps(token, user_songs, steps, called_from_events):
+def build_playlist_from_steps(token, user_songs, steps, called_from_events, playlist_id):
     for i in range(2):
         user_songs[i] = search_song(token, user_songs[i])
         # Add song genre too - used for song similarity comparison
@@ -304,27 +304,27 @@ def build_playlist_from_steps(token, user_songs, steps, called_from_events):
     song_list_ids.append(current_song["song_id"])
     artist_names.append(current_song["artist_name"])
     print("SONGS: ", songs)
-    playlist_create_response = {
-        "external_urls" : {
-            "spotify" : "",
-        }
-    }
-    display_name = ""
+    # playlist_create_response = {
+    #     "external_urls" : {
+    #         "spotify" : "",
+    #     }
+    # }
+    # display_name = ""
     #Create playlist in spotify
     if called_from_events == False: #without this we would have created a seperate playlist for each interval
-        user_obj = get_current_user_id(token)
-        user_id = user_obj["id"]
-        display_name = user_obj["display_name"]
-        print("DISPLAY NAME IN BUILD PLAYLIST FROM STEPS: ", display_name)
-        playlist_create_response = create_spotify_playlist(token, user_id, "TuneTimePlaylist")
-        playlist_modify_response = modify_spotify_playlist(token, playlist_create_response["id"], songs)
+        # user_obj = get_current_user_id(token)
+        # user_id = user_obj["id"]
+        # display_name = user_obj["display_name"]
+        # print("DISPLAY NAME IN BUILD PLAYLIST FROM STEPS: ", display_name)
+        # playlist_create_response = create_spotify_playlist(token, user_id, "TuneTimePlaylist")
+        playlist_modify_response = modify_spotify_playlist(token, playlist_id, songs)
         print("PLAYLIST CREATION: ", playlist_modify_response)
     return {
         "song_names": song_list_names,
         "song_ids": song_list_ids, 
         "steps": steps, 
-        "playlist_url": playlist_create_response["external_urls"]["spotify"],
-        "display_name": display_name
+        # "playlist_url": playlist_create_response["external_urls"]["spotify"],
+        # "display_name": display_name
     }
 
 def get_song_feature(auth_token, song_id):
