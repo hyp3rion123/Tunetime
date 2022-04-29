@@ -14,6 +14,7 @@ from ast import literal_eval
 from math import floor
 import datetime
 import os
+import time
 from urllib.parse import urlencode
 #from http.server import BaseHTTPRequestHandler, HTTPServer
 from flask import Flask, render_template, request, redirect, url_for, json, make_response
@@ -313,6 +314,20 @@ def get_song_feature(auth_token, song_id):
     song_feature_response = requests.get(
         url=song_feature_request["url"], headers=song_feature_request["headers"]
     )
+    #If api rate limit is exceeded, wait for the value specified in the Retry-After header
+    # if song_feature_response.status_code == 429:
+    #     retry_after = song_feature_response.headers["Retry-After"]
+    #     print("API RATE LIMIT EXCEEDED, RETRY AFTER: ", retry_after)
+    #     # printing the start time
+    #     print("The time of code execution begin is : ", end="")
+    #     print(time.ctime())
+    #     time.sleep(int(retry_after)+1)
+    #     # printing the end time
+    #     print("The time of code execution end is : ", end="")
+    #     print(time.ctime())
+    #     song_feature_response = requests.get(
+    #         url=song_feature_request["url"], headers=song_feature_request["headers"]
+    #     )
     return song_feature_response.json()
 
 def modify_spotify_playlist(token, playlist_id, songs):
@@ -639,6 +654,20 @@ def get_artist_genres(auth_token, artist_id):
     genre_response = requests.get(
         url=search_request["url"], headers=search_request["headers"]
     )
+    #If api rate limit is exceeded, wait for the value specified in the Retry-After header
+    # if genre_response.status_code == 429:
+    #     retry_after = genre_response.headers["Retry-After"]
+    #     print("API RATE LIMIT EXCEEDED, RETRY AFTER: ", retry_after)
+    #     # printing the start time
+    #     print("The time of code execution begin is : ", end="")
+    #     print(time.ctime())
+    #     time.sleep(int(retry_after)+1)
+    #     # printing the end time
+    #     print("The time of code execution end is : ", end="")
+    #     print(time.ctime())
+    #     genre_response = requests.get(
+    #         url=search_request["url"], headers=search_request["headers"]
+    #     )
     # print("GENRES: ", genre_response.json()["genres"])
     if genre_response.json()["genres"]:
         return genre_response.json()["genres"][0]
