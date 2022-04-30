@@ -103,7 +103,7 @@ def index():
             start = event['start'].get('dateTime', event['start'].get('date'))
             end = event['end'].get('dateTime', event['end'].get('date'))
             duration = (datetime.datetime.strptime(end, '%Y-%m-%dT%H:%M:%S%z') - datetime.datetime.strptime(start, '%Y-%m-%dT%H:%M:%S%z'))
-            print(start, event['summary'], duration)
+            #print(start, event['summary'], duration)
 
             event = {
                 "start": event['start'],
@@ -115,10 +115,20 @@ def index():
                 formatted_events[key] = [event]
             else:
                 formatted_events[key].append(event)
-        print(formatted_events)
+        #print("formatted events: ", formatted_events)
     except HttpError as error:
         print('An error occurred: %s' % error)
     return render_template("index.html", events=formatted_events, data=request.args.get("data"))
+
+@api.route("/validateSongs", methods=["GET"])
+def validate_songs():
+    token = request.args.get("token")
+    events = literal_eval(request.args.get("events"))
+    for i in range(len(events)):
+        song = request.args.get("event_" + str(i+1) + "_" + events[i]["summary"] + "_song")
+        search_song(token, song)
+    search_song(token, request.args.get("last_song"))
+    return url_for("/buildPlaylist", data = request)
 
 @api.route("/buildPlaylist", methods=["GET"])
 #@login_required
@@ -129,7 +139,7 @@ def build_playlist_wrapper(): #used to enqueue worker processes so that the call
     user_id = user["id"]
     playlist_name = "TuneTimePlaylist-" + datetime.datetime.today().strftime('%Y-%m-%d')
     playlist_create_response = create_spotify_playlist(token, user_id, playlist_name)
-    job = q.enqueue(build_playlist, request.args, playlist_create_response["id"], job_timeout=600, retry=Retry(max=3))
+    job = q.enqueue(build_playlist, request.args, playlist_create_response["id"], job_timeout=600)#, retry=Retry(max=3))
     # while(job.get_status(refresh=True) != "finished"):
     #     status = job.get_status(refresh=True)
     #     print("waiting for job to finish, status: ", status)
@@ -167,12 +177,18 @@ def build_playlist(request_args, playlist_id):
         events = literal_eval(request_args.get("events"))
         #date_select = request_args.get("event_date_select")
         #print("DATE SELECT: ", date_select)
+        print("events: ", events)
+        print("request_args: ", request_args)
         event_songs = []
         for i in range(len(events)):
-            event_songs.append(request_args.get("event_" + str(i+1) + "_" + events[i]["summary"] + "_song"))
+            event_songs.append(request_args.get("event_" + str(i) + "_" + events[i]["summary"] + "_song"))
         event_songs.append(request_args.get("last_song"))
+        print("event_songs: ", event_songs)
         last_selected_event = int(request_args.get("last_selected_event"))
         build_playlist_from_events(token, events, event_songs, last_selected_event, playlist_id)
+
+
+
         # playlist_url = playlist_obj["playlist_url"]
         # user_name = playlist_obj["display_name"]
         # print("DISPLAY NAME IN BUILD PLAYLIST: ", user_name)
