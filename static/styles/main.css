@@ -12,7 +12,8 @@ body {
 .card_body {
     display: table-cell;
     width: 50%;
-    padding: 1em 1em 5em 4em;
+    padding: 1em 1em 3em 3em;
+    position: relative;
 }
 
 .front-page-input {
@@ -51,7 +52,6 @@ body {
 }
 
 input[type="text"] {
-    margin-top: 10px;
     border: none;
     outline: none;
     background-color: black;
@@ -65,7 +65,7 @@ label {
     margin-bottom: 25px;
 }
 
-#submit_button {
+#submit_button{
     margin-top: 10px;
     line-height:40px;
     color: white;
@@ -87,6 +87,7 @@ label {
 
 #use_calendar_state_checkbox_label, .event_checkbox_labels {
     color:white;
+    margin: 7px;
 }
 
 #loading_sign
@@ -173,4 +174,31 @@ span:before
 
 .info {
     color: white;
+    font-size: 18px;
+}
+
+#login_button{
+  background-color: rgb(42, 190, 42);
+  height: 40px;
+  width: 100px;
+  border-radius: 50px;
+  font-size: 18px;
+  font-family: "Poppins";
+  cursor: pointer; 
+  color: white;
+  border: none;
+}
+
+#developer {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  padding: 0 0 0 20px;
+}
+
+#event_date_select {
+  border: none;
+  border-radius: 5px;
+  font-family: Poppins;
+  margin: 0 0 10px 0;
 }

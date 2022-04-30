@@ -1,4 +1,8 @@
-__pycache__
-.vscode
+/__pycache__
+/.vscode
 settings.json
 .prettierrc
+package-lock.json
+/node_modules
+/venv
+.env
