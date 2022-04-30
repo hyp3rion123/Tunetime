@@ -120,20 +120,22 @@ def index():
         print('An error occurred: %s' % error)
     return render_template("index.html", events=formatted_events, data=request.args.get("data"))
 
-@api.route("/validateSongs", methods=["GET"])
-def validate_songs():
-    token = request.args.get("token")
-    events = literal_eval(request.args.get("events"))
-    for i in range(len(events)):
-        song = request.args.get("event_" + str(i+1) + "_" + events[i]["summary"] + "_song")
-        search_song(token, song)
-    search_song(token, request.args.get("last_song"))
-    return url_for("/buildPlaylist", data = request)
-
 @api.route("/buildPlaylist", methods=["GET"])
 #@login_required
 def build_playlist_wrapper(): #used to enqueue worker processes so that the call stack doesn't get overloaded
     token = request.args.get("token")
+    # Validating song inputs
+    # Using steps
+    if request.args.get("first_song") != "":
+        search_song(token, request.args.get("first_song"))
+    #Using events
+    else:
+        events = literal_eval(request.args.get("events"))
+        for i in range(len(events)):
+            song = request.args.get("event_" + str(i) + "_" + events[i]["summary"] + "_song")
+            search_song(token, song)
+    search_song(token, request.args.get("last_song"))
+    #Songs are valid
     user = get_current_user_id(token)
     user_name = user["display_name"]
     user_id = user["id"]
