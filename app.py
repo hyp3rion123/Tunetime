@@ -243,7 +243,16 @@ def build_playlist_from_events(token, events, event_songs, last_selected_event, 
             song_ids.append(id)
         for name in songs["song_names"]:
             song_names.append(name)
-    #Remove duplicate songs from interval boundaries
+        #Remove duplicate songs from interval boundaries
+        removed_id = song_ids.pop()
+        removed_name = song_names.pop()
+        print("removed_id: ", removed_id, "removed_name: ", removed_name)
+        print("CURRENT SONG NAMES: ", song_names, "CURRENT SONG IDS: ", song_ids)
+    #Add last song back in
+    last_song = search_song(token, event_songs[-1])
+    modify_spotify_playlist(token, playlist_id, [last_song])
+    song_ids.append(last_song["song_id"])
+    song_names.append(last_song["song_name"])
     #print("BEFORE songnames: ", song_names, "songids:", song_ids)
     song_names = list(dict.fromkeys(song_names))
     song_ids = list(dict.fromkeys(song_ids))
@@ -319,11 +328,12 @@ def build_playlist_from_steps(token, user_songs, steps, called_from_events, play
         song_list_names.append(current_song["song_name"])
         song_list_ids.append(current_song["song_id"])
         artist_names.append(current_song["artist_name"])
-    current_song = user_songs[1]
-    songs.append(current_song)
-    song_list_names.append(current_song["song_name"])
-    song_list_ids.append(current_song["song_id"])
-    artist_names.append(current_song["artist_name"])
+    if not called_from_events:
+        current_song = user_songs[1]
+        songs.append(current_song)
+        song_list_names.append(current_song["song_name"])
+        song_list_ids.append(current_song["song_id"])
+        artist_names.append(current_song["artist_name"])
     print("SONGS: ", songs)
     # playlist_create_response = {
     #     "external_urls" : {
@@ -437,7 +447,7 @@ def get_current_user_id(auth_token):
     user_id_response = requests.get(
         url=user_id_request["url"], headers=user_id_request["headers"]
     )
-    print("USER ID RESPONSE: ", user_id_response)
+    # print("USER ID RESPONSE: ", user_id_response)
     if user_id_response.status_code == 429:
         user_id_response = safe_request(user_id_request, user_id_response) #in case spotify api request limit is reached
     return user_id_response.json()
@@ -552,7 +562,7 @@ def select_unchosen_song(auth_token, song_list, chosen_songs, step_features, art
         ):
             most_similar_song = song_list[i]
             most_similar_score = current_similarity
-            print("updated most similar song: ", most_similar_score)
+            # print("updated most similar song: ", most_similar_score)
     most_similar_song["percent_match"] = most_similar_score
     return most_similar_song
 
@@ -575,8 +585,8 @@ def get_similarity_score(auth_token, song_1, song_2, song_2_raw_features):
         "tempo",
     }
     ignore_count = 0  # used to ommit features that are skewing average(e.g if one feature is zero there is no way to tell how similar the other is)
-    print("features for ", song_1, ": ", first_song_features)
-    print("features for ", song_2, ": ", second_song_features)
+    # print("features for ", song_1, ": ", first_song_features)
+    # print("features for ", song_2, ": ", second_song_features)
     for ftr in features:
         if ftr in first_song_features and ftr in second_song_features:
             ftr_1 = float(first_song_features[ftr])
@@ -671,7 +681,7 @@ def get_recommendations(
     if reccomend_response.status_code == 429:
         reccomend_response = safe_request(reccomend_request, reccomend_response)
     recommended_objs = []
-    print("RESPONSEEE: " , reccomend_response.json())
+    # print("RESPONSEEE: " , reccomend_response.json())
     for i in range(10):
         recommended_objs.append(
             {
@@ -704,7 +714,7 @@ def get_artist_genres(auth_token, artist_id):
     )
     if genre_response.status_code == 429:
         genre_response = safe_request(search_request, genre_response)
-    print("GENRE_RESPONSE: ", genre_response.json())
+    # print("GENRE_RESPONSE: ", genre_response.json())
     if genre_response.json()["genres"]:
         return genre_response.json()["genres"][0]
     return None
