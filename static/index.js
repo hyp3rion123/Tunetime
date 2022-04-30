@@ -24,31 +24,20 @@ $(document).ready(function() {
     //Loads the events for today by default
     events = $("#events").val()
     events = events.replace(/'/g, '"')
-    // console.log(raw_events)
     events = JSON.parse(events);
     today = today.toISOString().substring(0,10)
     if (events[today] != undefined) {
         console.log("Today's events:", events[today])
         let i = 1;
-        events[today].forEach(event => {
+        events[today].forEach(function(event, i) {
             console.log(Object.keys(event));
             $('#events_container').append(
                 '<input name="event_'+i+'_checkbox" type="checkbox" id="event_'+i+'_checkbox" value="'+event.summary+'">'+
                 '<label class="event_checkbox_labels" for="event_'+i+'_checkbox">'+event.summary+' at '+event.start.dateTime.substring(11,16)+'</label>'+
                 '<input name="event_'+i+'_'+event.summary+'_song" type="text" class="'+event.summary+' selectt" id="event_'+i+'_song_input" placeholder="Enter First Song"><br>'
             )
-            $('#event_'+i+'_checkbox').bind("click", function() {
-                console.log("displaying song input for event")
-                var inputValue = $(this).attr("value");
-                if ($(this).is(":checked")) {
-                    $("." + inputValue).prop('required', true);
-                    $("." + inputValue).show();
-                } else {
-                    $("." + inputValue).prop('required', false);
-                    $("." + inputValue).hide();
-                }
-            });
-            i++;
+            $('#event_'+i+'_song_input').hide();
+            bind_checkbox_to_song_input(i);
         })
     }
 
@@ -95,6 +84,20 @@ $(document).ready(function() {
             });
         }
     });
+    function bind_checkbox_to_song_input(i) {
+        $('#event_'+i+'_checkbox').click(function() {
+            current_song_input=$('#event_'+i+'_song_input')
+            console.log("displaying song input for event")
+            var inputValue = $(this).attr("value");
+            if ($(this).prop("checked")) {
+                current_song_input.prop('required', true);
+                current_song_input.show();
+            } else {
+                current_song_input.prop('required', false);
+                current_song_input.hide();
+            }
+        });
+    }
     //When the user selects a different date, display the events for that date
     $('#event_date_select').change(function() {
         //Clear currently displayed events
@@ -106,29 +109,14 @@ $(document).ready(function() {
         selected_date = $('#event_date_select').val()
         if (events[selected_date] != undefined) {
             console.log("Today's events:", events[selected_date])
-            let i = 1;
-            events[selected_date].forEach(event => {
+            events[selected_date].forEach(function(event, i) {
                 $('#events_container').append(
                     '<input name="event_'+i+'_checkbox" type="checkbox" id="event_'+i+'_checkbox" value="'+event.summary+'">'+
                     '<label class="event_checkbox_labels" for="event_'+i+'_checkbox">'+event.summary+' at '+event.start.dateTime.substring(11,16)+'</label>'+
                     '<input name="event_'+i+'_'+event.summary+'_song" type="text" class="'+event.summary+' selectt" id="event_'+i+'_song_input" placeholder="Enter First Song"><br>'
                 )
-                $('input[type="checkbox"]').not("#use_calendar_state_checkbox").each(function() {
-                    var inputValue = $(this).attr("value");
-                    $("." + inputValue).hide();
-                });
-                $('#event_'+i+'_checkbox').bind("click", function() {
-                    console.log("displaying song input for event")
-                    var inputValue = $(this).attr("value");
-                    if ($(this).is(":checked")) {
-                        $("." + inputValue).prop('required', true);
-                        $("." + inputValue).show();
-                    } else {
-                        $("." + inputValue).prop('required', false);
-                        $("." + inputValue).hide();
-                    }
-                });
-                i++;
+                $('#event_'+i+'_song_input').hide();
+                bind_checkbox_to_song_input(i);
             })
         }
     })
