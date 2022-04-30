@@ -24,9 +24,10 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-from werkzeug.exceptions import BadRequest
+from urllib3 import Retry
+from werkzeug.exceptions import BadRequest, HTTPException
 from worker import conn
-from rq import Queue
+from rq import Queue, Retry
 
 api = Flask(__name__)
 q = Queue(connection=conn)
@@ -128,7 +129,7 @@ def build_playlist_wrapper(): #used to enqueue worker processes so that the call
     user_id = user["id"]
     playlist_name = "TuneTimePlaylist-" + datetime.datetime.today().strftime('%Y-%m-%d')
     playlist_create_response = create_spotify_playlist(token, user_id, playlist_name)
-    job = q.enqueue(build_playlist, request.args, playlist_create_response["id"], job_timeout=600)
+    job = q.enqueue(build_playlist, request.args, playlist_create_response["id"], job_timeout=600, retry=Retry(max=3))
     # while(job.get_status(refresh=True) != "finished"):
     #     status = job.get_status(refresh=True)
     #     print("waiting for job to finish, status: ", status)
@@ -362,7 +363,7 @@ def get_song_feature(auth_token, song_id):
         url=song_feature_request["url"], headers=song_feature_request["headers"]
     )
     if song_feature_response.status_code == 429:
-        song_feature_response = safe_request(song_feature_request, song_feature_response) #in case spotify api request limit is reached
+        song_feature_response = safe_request(song_feature_request, song_feature_response) #in case spotify api request limit is reached       
     return song_feature_response.json()
 
 def modify_spotify_playlist(token, playlist_id, songs):
@@ -690,6 +691,19 @@ def get_artist_genres(auth_token, artist_id):
         return genre_response.json()["genres"][0]
     return None
 
+@api.errorhandler(HTTPException)
+def handle_exception(e):
+    """Return JSON instead of HTML for HTTP errors."""
+    # start with the correct headers and status code from the error
+    response = e.get_response()
+    # replace the body with JSON
+    response.data = json.dumps({
+        "code": e.code,
+        "name": e.name,
+        "description": e.description,
+    })
+    response.content_type = "application/json"
+    return response
 
 if __name__ == "__main__":
     api.debug = True
