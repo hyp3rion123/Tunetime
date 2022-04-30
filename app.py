@@ -16,6 +16,7 @@ from math import floor
 import datetime
 import os
 import time
+import copy
 from urllib.parse import urlencode
 #from http.server import BaseHTTPRequestHandler, HTTPServer
 from flask import Flask, render_template, request, redirect, url_for, json, make_response
@@ -290,27 +291,36 @@ def build_playlist_from_steps(token, user_songs, steps, called_from_events, play
     )
     #print("step_features: ", step_features)
     # Get recommendations based on step features
-    current_song = user_songs[0]
-    songs = [current_song]
+    current_search = user_songs[0]
+    songs = [current_search]
     song_list_names = [user_songs[0]["song_name"]]
     song_list_ids = [user_songs[0]["song_id"]]
     artist_names = [user_songs[0]["artist_name"]]
     for i in range(steps - 2):
+        #To make sure songs are getting more similar to last song
         if i > ((steps - 2) / 2):
-            current_song["song_genre"] = [
-                current_song["song_genre"],
-                user_songs[1]["song_genre"],
-            ]
+            if (i > (7 * (steps - 2) / 10)): # Skew song genre towards the end
+                current_search["song_genre"] = [
+                    current_search["song_genre"],
+                    user_songs[1]["song_genre"],
+                ]
+            # Alternate using last song artist / track for better results. Can't do both + current because of Spotify API limits
+            if (i % 2 == 0):
+                current_search["artist_id"] = user_songs[1]["artist_id"]
+            else:
+                current_search["song_id"] = user_songs[1]["song_id"]
+        print("song being used to get rec: ", current_search)
         potential_songs = get_recommendations(
             token,
-            current_song["song_id"],
-            current_song["artist_id"],
-            current_song["song_genre"],
+            current_search["song_id"],
+            current_search["artist_id"],
+            current_search["song_genre"],
             step_features[i],
         )
         current_song = select_unchosen_song(
             token, potential_songs, song_list_names, step_features[i], artist_names
         )
+        print("choosing unchosen song: ", current_song)
         # Similarity scores
         current_song["similarity_score_first"] = round(
             get_similarity_score(
@@ -328,6 +338,10 @@ def build_playlist_from_steps(token, user_songs, steps, called_from_events, play
         song_list_names.append(current_song["song_name"])
         song_list_ids.append(current_song["song_id"])
         artist_names.append(current_song["artist_name"])
+        print("after adding song: ", current_song["song_name"], "with id", current_song["song_id"], " new playlist is ", songs)
+        #Shallow copy of current song
+        current_search = copy.copy(current_song)
+    #Adding last song back
     if not called_from_events:
         current_song = user_songs[1]
         songs.append(current_song)
@@ -395,12 +409,17 @@ def get_song_feature(auth_token, song_id):
     return song_feature_response.json()
 
 def modify_spotify_playlist(token, playlist_id, songs):
+    print("MODIFYING PLAYLIST: ")
+    for song in songs:
+        print(song["song_name"])
+    
     data = {
         "uris": [
             "spotify:track:" + song["song_id"]
             for song in songs
         ]
     }
+    print("DATA: ", data)
     playlist_modify_request = {
         "url": "https://api.spotify.com/v1/playlists/" + playlist_id + "/tracks",
         "headers": {
@@ -650,12 +669,13 @@ def get_recommendations(
     auth_token, seed_tracks, seed_artists, seed_genres, song_features
 ):
     # print("calling get_recommendations with auth_token: ", auth_token, " seed_tracks: ", seed_tracks, " seed_artists ", seed_artists, " seed_genres: ", seed_genres)
+    reccomendation_count = 10
     encoded_qparams = urlencode(
         {
             "seed_artists": seed_artists,
             "seed_genres": seed_genres,
             "seed_tracks": seed_tracks,
-            "limit": "10",
+            "limit": str(reccomendation_count),
             "target_danceability": str(song_features["danceability"]),
             "target_energy": str(song_features["energy"]),
             "target_loudness": str(song_features["loudness"]),
@@ -681,8 +701,9 @@ def get_recommendations(
     if reccomend_response.status_code == 429:
         reccomend_response = safe_request(reccomend_request, reccomend_response)
     recommended_objs = []
-    # print("RESPONSEEE: " , reccomend_response.json())
-    for i in range(10):
+    # print("reccomend response from ", seed_tracks, ": " , reccomend_response)
+    # print( " with json: ", reccomend_response.json())
+    for i in range(reccomendation_count):
         recommended_objs.append(
             {
                 "song_name": reccomend_response.json()["tracks"][i]["name"],
