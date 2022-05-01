@@ -757,6 +757,14 @@ def handle_exception(e):
     response.content_type = "application/json"
     return response
 
+@api.route("/privacyPolicy", methods=["GET"])
+def display_privacy_policy():
+    return render_template("privacy.html")
+
+@api.route("/termsOfService", methods=["GET"])
+def display_tos():
+    return render_template("tos.html")
+
 if __name__ == "__main__":
     api.debug = True
     api.run()

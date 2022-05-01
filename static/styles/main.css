@@ -202,3 +202,9 @@ span:before
   font-family: Poppins;
   margin: 0 0 10px 0;
 }
+
+#legal_container {
+  position: fixed;
+  bottom: 0;
+  right: 0;
+}
