@@ -293,9 +293,12 @@ def build_playlist_from_steps(token, user_songs, steps, called_from_events, play
     # Get recommendations based on step features
     current_search = user_songs[0]
     songs = [current_search]
-    song_list_names = [user_songs[0]["song_name"]]
-    song_list_ids = [user_songs[0]["song_id"]]
-    artist_names = [user_songs[0]["artist_name"]]
+    # Adding both interval edge songs so that the last song doesn't appear at any point before the end
+    song_list_names = [user_songs[0]["song_name"], user_songs[1]["song_name"]]
+    # Only names of songs/artists are used for determining whether song has been chosen already and ids are used
+    # in request to spotify api so we can't add the last song here right away
+    song_list_ids = [user_songs[0]["song_id"]]#, user_songs[1]["song_id"]]
+    artist_names = [user_songs[0]["artist_name"], user_songs[1]["artist_name"]]
     for i in range(steps - 2):
         #To make sure songs are getting more similar to last song
         if i > ((steps - 2) / 2):
