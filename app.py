@@ -134,7 +134,9 @@ def build_playlist_wrapper(): #used to enqueue worker processes so that the call
         events = literal_eval(request.args.get("events"))
         for i in range(len(events)):
             song = request.args.get("event_" + str(i) + "_" + events[i]["summary"] + "_song")
-            search_song(token, song)
+            # If song is not empty, search for song
+            if song != "":
+                search_song(token, song)
     search_song(token, request.args.get("last_song"))
     #Songs are valid
     user = get_current_user_id(token)
