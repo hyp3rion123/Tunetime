@@ -25,7 +25,7 @@
             <div class="card_body">
                 <h2 class="form_title">TuneTime</h2>
                 <button id="login_button" value="Login" onclick="window.location.href='{{ auth_url }}'">Login</button><br>
-                <h3 class="info" id="developer">Developer: Andrei Gliga</h3>
+                <h3 class="info" id="developer">Created by Andrei Gliga</h3>
                 <script>
                     $('#login_button').click(function() {
                         auth2.signIn().then(signInCallback);
@@ -33,6 +33,10 @@
                 </script>
             </div>
         </div>  
+        <div id="legal_container">
+            <a href="https://tunetime.herokuapp.com/privacyPolicy" class="info" id="privacy_policy">Privacy Policy</a><br>
+            <a href="https://tunetime.herokuapp.com/termsOfService" class="info" id="terms_of_service">Terms of Service</a>
+        </div>
     </div>
     <script>
         function signInCallback(authResult) {
