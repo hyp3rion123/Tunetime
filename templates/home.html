@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>TuneTime-OAuth homepage</title>
+    <link rel="favicon" href="{{ url_for('static', filename='logo.jpg') }}">
+</head>
+<body>
+    <h1>Google OAuth2 Homepage</h2>
+    <p>
+        <u>Describe the necessary content, context, connection to the app:</u> Tunetime requests read-only access to your Google Calendar and 
+        permission to view and modify private spotify playlists. Tunetime is a web application made with the intention of 
+        reflecting it's users' daily activities through music.
+    </p>
+    <p><u>Accurately represents your app's identity:</u> TuneTime is an application that allows you to create transitional
+        playlists based on events listed on your Google Calendar. Simply
+        select the date you wish to create a playlist for, choose a
+        combination of events you want to include, select songs you want to
+        start those events with, and choose a song you want to end the
+        playlist with.
+    </p>
+    <p>
+        <u>What will this app do with user data - transparency explanation:</u> To use TuneTime, users are required to login using their Google and
+        Spotify accounts. By signing in with Google, users are granting TuneTime
+        permission to view the events listed in their calendars(read-only
+        permissions). TuneTime will use this information to display the user
+        their events in the UI when creating their transitional playlists.
+        The calculation being performed in determining the playlist length
+        is the only way this scope will be used. No event information is
+        retained past the user's interaction with the website other than
+        through request logs which are automatically deleted after 1 week.
+        There is no associated database or user data storing. Signing in with Spotify grants TuneTime the ability to read
+        and modify private playlists on their behalf. The creation of
+        playlists will only occur when the user presses the submit button
+        indicating which songs they wish their playlist to transition
+        between.
+    </p>
+    <p>
+        <u>How does this app enhance user functionality:</u> TuneTime calculates a smooth transition between
+        the given songs based on a variety of characteristics such as song
+        tempo, energy, and acousticness to create a tailored playlist on
+        Spotify perfectly suiting your mood for you to play throughout your day.
+    </p>
+    <p>
+        <u>Google Oauth2 Limited Use Disclosure:</u> This app doesn't request restricted scopes, but if it did,
+        TuneTime's use of information received from Google APIs will adhere to the Google Oauth2 Limited Use Disclosure,
+        including the Limited Use requirements. 
+    </p>
+    <p>
+        <u>Link to privacy policy:</u> <a href="https://www.tunetime.ca/privacyPolicy">Privacy Policy</a><br>
+        Link to terms of service: <a href="https://www.tunetime.ca/termsOfService">Terms of Service</a>
+    </p>
+</body>

@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <script src="https://code.jquery.com/jquery-1.12.4.min.js"></script>
+    <link
+      href="{{ url_for('static',filename='styles/main.css') }}"
+      rel="stylesheet"
+      type="text/css"
+    />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css?family=Poppins"
+    />
+    <title>TuneTime-Description</title>
+  </head>
+  <body>
+    <div class="page_wrapper font-poppins">
+      <div class="card_outer">
+        <div class="card_picture"></div>
+        <div class="card_body">
+          <h2 class="form_title">What is TuneTime?</h2>
+          <p>
+            TuneTime is an application that allows you to create transitional
+            playlists based on events listed on your Google Calendar. Simply
+            select the date you wish to create a playlist for, choose a
+            combination of events you want to include, select songs you want to
+            start those events with, and choose a song you want to end the
+            playlist with. TuneTime then calculates a smooth transition between
+            the given songs based on a variety of characteristics such as song
+            tempo, energy, and acousticness to create a tailored playlist on
+            Spotify perfectly suiting your mood for you to play throughout your day.
+          </p>
+          <p>
+            Additionally, if a user wishes to use a more compact version of
+            TuneTime, they are given the option to simply choose a start song,
+            an end song, and how many songs they want in their playlist.
+          </p>
+          <a class="info" href="https://www.tunetime.ca">Back</a>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

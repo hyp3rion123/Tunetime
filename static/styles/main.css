@@ -209,3 +209,7 @@ span:before
   bottom: 0;
   right: 0;
 }
+p {
+  color: white;
+  font-size: 14px;
+}
