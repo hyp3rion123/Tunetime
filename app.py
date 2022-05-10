@@ -37,7 +37,7 @@ q = Queue(connection=conn)
 def login():
     SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
     #User will land on /loginCallback once permissions are granted
-    flow = Flow.from_client_secrets_file('./credentials.json', SCOPES, redirect_uri=os.environ["ROOT_URL"] + "/loginCallback")
+    flow = Flow.from_client_config(json.loads(os.environ["CREDS_JSON"]), SCOPES, redirect_uri=os.environ["ROOT_URL"] + "/loginCallback")
     #Authorization URL is linked to Login button
     auth_url, _ = flow.authorization_url(prompt='consent')
     return render_template("login.html", auth_url=auth_url)
@@ -63,7 +63,7 @@ def login_callback():
     #Extract code and exchange for token
     code = request.args.get("code")
     print("CODE: ", code)
-    flow = Flow.from_client_secrets_file('./credentials.json', SCOPES, redirect_uri=os.environ["ROOT_URL"] + "/loginCallback")
+    flow = Flow.from_client_config(json.loads(os.environ["CREDS_JSON"]), SCOPES, redirect_uri=os.environ["ROOT_URL"] + "/loginCallback")
     flow.fetch_token(code=code)
     #Set the token/exp cookies
     token = flow.credentials.token
@@ -161,7 +161,7 @@ def build_playlist_wrapper(): #used to enqueue worker processes so that the call
     data = {
         "playlist_url" : playlist_create_response["external_urls"]["spotify"],
         "created_by" : user_name,
-        "base_url" : os.environ["ROOT_URL"]+"/authorize"
+        "base_url" : os.environ["ROOT_URL"]
     }
     return render_template("info.html", data=data)
 
