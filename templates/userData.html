@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <script src="https://code.jquery.com/jquery-1.12.4.min.js"></script>
+    <link
+      href="{{ url_for('static',filename='styles/main.css') }}"
+      rel="stylesheet"
+      type="text/css"
+    />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css?family=Poppins"
+    />
+    <title>TuneTime-User Data</title>
+  </head>
+  <body>
+    <div class="page_wrapper font-poppins">
+      <div class="card_outer">
+        <div class="card_picture"></div>
+        <div class="card_body">
+          <h2 class="form_title">How we process user data</h2>
+          <p>
+            To use TuneTime, users are required to login using their Google and
+            Spotify accounts.
+          </p>
+          <p>
+            Google: By signing in with Google, users are granting TuneTime
+            permission to view the events listed in their calendars(read-only
+            permissions). TuneTime will use this information to display the user
+            their events in the UI when creating their transitional playlists.
+            The calculation being performed in determining the playlist length
+            is the only way this scope will be used. No event information is
+            retained past the user's interaction with the website other than
+            through request logs which are automatically deleted after 1 week.
+            There is no associated database or user data storing.
+          </p>
+          <p>
+            Spotify: Signing in with Spotify grants TuneTime the ability to read
+            and modify private playlists on their behalf. The creation of
+            playlists will only occur when the user presses the submit button
+            indicating which songs they wish their playlist to transition
+            between.
+          </p>
+          <a class="info" href="https://www.tunetime.ca">Back</a>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

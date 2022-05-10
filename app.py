@@ -37,24 +37,24 @@ q = Queue(connection=conn)
 def login():
     SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
     #User will land on /loginCallback once permissions are granted
-    flow = Flow.from_client_secrets_file('./credentials.json', SCOPES, redirect_uri=os.environ["ROOT_URL"] + "/loginCallback")
+    flow = Flow.from_client_config(json.loads(os.environ["CREDS_JSON"]), SCOPES, redirect_uri=os.environ["ROOT_URL"] + "/loginCallback")
     #Authorization URL is linked to Login button
     auth_url, _ = flow.authorization_url(prompt='consent')
     return render_template("login.html", auth_url=auth_url)
 
 #Prevents direct access to the endpoints without authentication
-def login_required(f):
-    def decorated_function(*args, **kwargs):
-        #check which endpoint is being accessed
-        if (request.path == "/loginCallback" or request.path == '/callback') and request.args.get("code") is None:
-            print("no code found")
-            return redirect('/')
-        elif request.cookies.get('google_token') is None or request.args.get("data") is None:
-            return redirect('/')
-        return f(*args, **kwargs)
-    decorated_function.__name__ = f.__name__
-    decorated_function.__doc__ = f.__doc__
-    return decorated_function
+# def login_required(f):
+#     def decorated_function(*args, **kwargs):
+#         #check which endpoint is being accessed
+#         if (request.path == "/loginCallback" or request.path == '/callback') and request.args.get("code") is None:
+#             print("no code found")
+#             return redirect('/')
+#         elif request.cookies.get('google_token') is None or request.args.get("data") is None:
+#             return redirect('/')
+#         return f(*args, **kwargs)
+#     decorated_function.__name__ = f.__name__
+#     decorated_function.__doc__ = f.__doc__
+#     return decorated_function
 
 @api.route("/loginCallback", methods=["GET"])
 #@login_required
@@ -63,7 +63,7 @@ def login_callback():
     #Extract code and exchange for token
     code = request.args.get("code")
     print("CODE: ", code)
-    flow = Flow.from_client_secrets_file('./credentials.json', SCOPES, redirect_uri=os.environ["ROOT_URL"] + "/loginCallback")
+    flow = Flow.from_client_config(json.loads(os.environ["CREDS_JSON"]), SCOPES, redirect_uri=os.environ["ROOT_URL"] + "/loginCallback")
     flow.fetch_token(code=code)
     #Set the token/exp cookies
     token = flow.credentials.token
@@ -513,6 +513,9 @@ def search_song(auth_token, song_name):
         "artist_name": response_artist,
     }
 
+@api.route("/googleOauth", methods=["GET"])
+def display_home():
+    return render_template("home.html")
 
 @api.route("/", methods=["GET"])
 def authorize():

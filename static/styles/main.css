@@ -178,15 +178,15 @@ span:before
 }
 
 #login_button{
-  background-color: rgb(42, 190, 42);
+  background-image: url('../images/login_button.png');
+  background-size: 200px;
+  background-repeat: no-repeat;
+  background-position: left;
+  background-color: black;
   height: 40px;
-  width: 100px;
-  border-radius: 50px;
-  font-size: 18px;
-  font-family: "Poppins";
+  width: 200px;
   cursor: pointer; 
   color: white;
-  border: none;
 }
 
 #developer {
@@ -208,4 +208,8 @@ span:before
   position: fixed;
   bottom: 0;
   right: 0;
+}
+p {
+  color: white;
+  font-size: 14px;
 }
